@@ -1,0 +1,109 @@
+#============================================================================
+# Name        : Makefile
+# Author      : oskwon(oskwon@marusys.com)
+# Version     : 
+# Copyright   : Copyright(c)2013 Marusys. All right reserved.
+# Description :
+#============================================================================
+
+include .config
+
+VER = v1.0
+REV = $(shell cat .revision)
+BIN = filestreamproxy
+
+SRC = \
+	main.cpp \
+	uThread.cpp \
+	eURIDecoder.cpp \
+	eFilePumpThread.cpp \
+	eNetworkPumpThread.cpp \
+
+
+CFLAGS ?=
+LDFLAGS ?=
+
+CFLAGS += -DDEBUG_LOG
+
+ifeq ($(SILENT_BUILD_MODE),y)
+Q=@
+endif
+
+ifeq ($(REV),)
+REV = 0
+endif
+
+ifeq ($(ARCH),mipsel)
+BUILD_TOP = $(OE_TOP)/staging/$(FLATFORM)
+CROSS = $(OE_TOP)/cross/mipsel/bin/$(FLATFORM)-
+endif
+
+ifeq ($(BUILD_MODE),debug)
+CFLAGS += -g
+else ifeq ($(BUILD_MODE),release)
+CFLAGS += -O2
+endif
+
+CXX= $(CROSS)g++
+LD= $(CROSS)ld
+STRIP= $(CROSS)strip
+RM= rm -f
+
+CFLAGS += -I$(BUILD_TOP)/usr/include
+LDFLAGS += -L$(BUILD_TOP)/usr/lib -lpthread
+
+OBJ=$(SRC:.cpp=.o)
+
+.SUFFIXES : .cpp .o
+.PHONY : all clean erase .showinfo .version
+
+.cpp.o: 
+	$(Q)echo "Compile... "$<
+	$(Q)$(CXX) $(CFLAGS) -c $<
+
+all: .showinfo .version $(BIN)
+
+$(BIN):$(OBJ)
+	$(Q)echo "Linking... "$@
+	$(Q)$(CXX) -o $@ $(OBJ) $(LDFLAGS)
+	$(Q)if [ "$(BUILD_MODE)" == "release" ]; then \
+		echo "Strip... "$@; \
+		$(STRIP) $@; \
+		fi
+	@echo `expr $(REV) + 1` > .revision
+
+clean:
+	$(Q)$(RM) $(BIN) *.o *.log version.h
+
+install:
+	@./upload.sh
+
+erase:clean
+	$(Q)$(RM) .revision
+
+.showinfo:
+	@echo "-----------------------------------------------------"
+	@echo "                [ BUILD ENVIRONMENT ]                "
+	@echo "-----------------------------------------------------"
+	@echo "OUTPUT   : "$(BIN)
+	@echo "VERSION  : "$(VER)
+	@echo "REVISION : "$(REV)
+	@echo ""
+	@echo "CXX      : "$(CXX)
+	@echo "LD       : "$(LD)
+	@echo "STRIP    : "$(STRIP)
+	@echo "CFLAGS   : "$(CFLAGS)
+	@echo "LDFLAGS  : "$(LDFLAGS)
+	@echo "-----------------------------------------------------"
+	@echo
+
+.version:
+	@echo "/*"								>  version.h 
+	@echo " * uVersion.h"				>> version.h
+	@echo " * Auto generated code."		>> version.h
+	@echo " */"							>> version.h
+	@echo "#ifndef UVERSION_H_"			>> version.h
+	@echo "#define UVERSION_H_"			>> version.h
+	@echo "#define PN \"$(BIN)\""		>> version.h
+	@echo "#define PV \"$(VER)\""		>> version.h
+	@echo "#endif /* UVERSION_H_ */"	>> version.h

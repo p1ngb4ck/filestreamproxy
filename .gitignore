@@ -1,0 +1,8 @@
+*.ts
+*.log
+*.o
+.revision
+version.h
+streamproxy
+filestreamproxy
+.bak
