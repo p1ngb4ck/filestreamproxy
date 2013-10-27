@@ -6,3 +6,7 @@ version.h
 streamproxy
 filestreamproxy
 .bak
+.autotools
+.cproject
+.project
+
