@@ -148,6 +148,23 @@ void eParser::FileName(char* aRequest, char* aHttp, std::string& aOutData)
 }
 //-------------------------------------------------------------------------------
 
+namespace eCacheID {
+	enum {
+		cVPID = 0,
+		cAPID,
+		cTPID,
+		cPCRPID,
+		cAC3PID,
+		cVTYPE,
+		cACHANNEL,
+		cAC3DELAY,
+		cPCMDELAY,
+		cSUBTITLE,
+		cacheMax
+	};
+};
+//-------------------------------------------------------------------------------
+
 /* f:40,c:00007b,c:01008f,c:03007b */
 bool eParser::MetaData(std::string aMediaFileName)
 {
@@ -179,26 +196,38 @@ bool eParser::MetaData(std::string aMediaFileName)
 				return false;
 			}
 
+			int setting_done = false;
 			for (int ii = 0; ii < tokens.size(); ++ii) {
 				std::string token = tokens[ii];
+				if(token.at(0) != 'c') continue;
+
+				int cache_id = atoi(token.substr(2,2).c_str());
 #ifdef DEBUG_LOG
-				LOG("token : %d [%s]", ii, token.c_str());
+				LOG("token : %d [%s], chcke_id : [%d]", ii, token.c_str(), cache_id);
 #endif
-				switch(ii) {
-					case(1):
-						gVideoPid = strtol(token.substr(4,8).c_str(), NULL, 16);
+				switch(cache_id) {
+					case(eCacheID::cVPID):
+						gVideoPid = strtol(token.substr(4,4).c_str(), NULL, 16);
 #ifdef DEBUG_LOG
 						LOG("video pid : %d", gVideoPid);
 #endif
+						setting_done = (gVideoPid && gAudioPid) ? true : false;
 						break;
-					case(2):
-						gAudioPid = strtol(token.substr(4,8).c_str(), NULL, 16);
+					case(eCacheID::cAC3PID):
+						gAudioPid = strtol(token.substr(4,4).c_str(), NULL, 16);
 #ifdef DEBUG_LOG
-
 						LOG("audio pid : %d", gAudioPid);
 #endif
 						break;
+					case(eCacheID::cAPID):
+						gAudioPid = strtol(token.substr(4,4).c_str(), NULL, 16);
+#ifdef DEBUG_LOG
+						LOG("audio pid : %d", gAudioPid);
+#endif
+						setting_done = (gVideoPid && gAudioPid) ? true : false;
+						break;
 				}
+				if(setting_done) break;
 			}
 			break;
 		}
@@ -207,5 +236,3 @@ bool eParser::MetaData(std::string aMediaFileName)
 	return true;
 }
 //-------------------------------------------------------------------------------
-
-
