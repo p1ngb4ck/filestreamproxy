@@ -11,6 +11,7 @@
 
 #include <poll.h>
 #include <stdio.h>
+#include <fcntl.h>
 
 #include "ePreDefine.h"
 #include "eFilePumpThread.h"
@@ -36,7 +37,8 @@ void eFilePumpThread::Run()
 {
 	int rc = 0;
 	unsigned char buffer[BUFFER_SIZE];
-	FILE* mediafilefd = fopen(mFileName.c_str(), "rb");
+	int mediafilefd = open(mFileName.c_str(), O_RDONLY | O_LARGEFILE);
+
 	struct pollfd pollevt;
 
 	pollevt.fd      = mDeviceFd;
@@ -48,15 +50,17 @@ void eFilePumpThread::Run()
 		rc = poll((struct pollfd*)&pollevt, 1, 1000);
 
 		if (pollevt.revents & POLLOUT) {
-			rc = fread(buffer, 1, BUFFER_SIZE, mediafilefd);
-			if(!rc) break;
+			rc = read(mediafilefd, buffer, BUFFER_SIZE);
+			if(rc < 0) {
+				break;
+			}
 #ifdef DEBUG_LOG
 			LOG("%d byte write.", rc);
 #endif
 			rc = write(mDeviceFd, buffer, rc);
 		}
 	}
-	fclose(mediafilefd);
+	close(mediafilefd);
 	mTermFlag = false;
 }
 //-------------------------------------------------------------------------------
