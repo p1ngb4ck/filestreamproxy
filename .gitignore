@@ -1,12 +1,24 @@
+filestreamproxy
 *.ts
 *.log
 *.o
 .revision
-version.h
-streamproxy
-filestreamproxy
 .bak
 .autotools
 .cproject
 .project
+.deps
+version.h
+up.sh
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache
+config.h
+config.status
+configure
+depcomp
+install-sh
+missing
+stamp-h1
 
