@@ -238,6 +238,7 @@ const wchar_t* eURIDecoder::DecodeURI(wchar_t* aData, int aBreakCond)
 			prevWasCr = false;
 		}
 	}
+	return NULL;
 }
 //-------------------------------------------------------------------------------
 
