@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 
 #include "ePreDefine.h"
@@ -53,10 +54,12 @@ Content-Type: video/mpeg\r\n\
 Server: stream_enigma2\r\n\
 \r\n";
 
-	write(1, c, strlen(c));
-
+	wc = write(1, c, strlen(c));
+#ifdef DEBUG_LOG
+	LOG("network pump start.", rc);
+#endif
 	while(mTermFlag) {
-		rc = poll((struct pollfd*)&pollevt, 1, 1000);
+		rc = poll((struct pollfd*)&pollevt, 1, 500);
 		if (pollevt.revents & POLLIN) {
 			rc = read(mDeviceFd, buffer, BUFFER_SIZE);
 
@@ -66,18 +69,20 @@ Server: stream_enigma2\r\n\
 #endif
 				continue;
 			}
-#ifdef DEBUG_LOG
-			LOG("%d byte read", rc);
-#endif
 			wc = write(1, buffer, rc);
 #ifdef DEBUG_LOG
-			LOG("%d byte write", wc);
+			if(wc != rc) {
+				LOG("write fail.. rc[%d], wc[%d]", rc, wc);
+			}
 #endif
 		} else if (pollevt.revents & POLLHUP) {
 			ioctl(mDeviceFd, 200, 0);
 			break;
 		}
 	}
+#ifdef DEBUG_LOG
+	LOG("network pump stoped.", rc);
+#endif
 	mTermFlag = false;
 }
 //-------------------------------------------------------------------------------

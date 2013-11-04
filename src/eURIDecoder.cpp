@@ -204,6 +204,7 @@ const wchar_t* eURIDecoder::DecodeURI(wchar_t* aData, int aBreakCond)
 					write += 2;
 
 					prevWasCr = false;
+					break;
 				}
 				break;
 
@@ -215,6 +216,7 @@ const wchar_t* eURIDecoder::DecodeURI(wchar_t* aData, int aBreakCond)
 				write++;
 
 				prevWasCr = false;
+				break;
 			}
 			break;
 
@@ -236,6 +238,7 @@ const wchar_t* eURIDecoder::DecodeURI(wchar_t* aData, int aBreakCond)
 			write++;
 
 			prevWasCr = false;
+			break;
 		}
 	}
 	return NULL;

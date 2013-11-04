@@ -5,8 +5,8 @@
  *      Author: kos
  */
 
-#ifndef EDEMUXPUMPTHREAD_H_
-#define EDEMUXPUMPTHREAD_H_
+#ifndef ENETWORKPUMPTHREAD_H_
+#define ENETWORKPUMPTHREAD_H_
 
 #include "uThread.h"
 //-------------------------------------------------------------------------------
@@ -25,4 +25,4 @@ public:
 };
 //-------------------------------------------------------------------------------
 
-#endif /* EDEMUXPUMPTHREAD_H_ */
+#endif /* ENETWORKPUMPTHREAD_H_ */

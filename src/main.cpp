@@ -10,7 +10,10 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
+#include <stdint.h>
 
 #include <vector>
 #include <string>
@@ -18,8 +21,13 @@
 #include <fstream>
 
 #include "ePreDefine.h"
-#include "eURIDecoder.h"
+#include "eParser.h"
+#include "eUpstreamSocket.h"
+#include "eTransCodingDevice.h"
+#include "uStringTool.h"
+
 #include "eFilePumpThread.h"
+#include "eDemuxPumpThread.h"
 #include "eNetworkPumpThread.h"
 
 #ifdef DEBUG_LOG
@@ -31,27 +39,30 @@ FILE* fpLog = fopen("/tmp/filestreamproxy.log", "w");
 using namespace std;
 //-------------------------------------------------------------------------------
 
-int gDeviceFd = 0;
+eFilePumpThread*    hFilePumpThread    = 0;
+eDemuxPumpThread*   hDemuxPumpThread   = 0;
+eNetworkPumpThread* hNetworkPumpThread = 0;
+eTransCodingDevice* hTranscodingDevice = 0;
 
-char* ReadRequest(char* aRequest)
-{
-	return fgets(aRequest, MAX_LINE_LENGTH-1, stdin);
-}
+void SignalHandler(int aSigNo);
 //-------------------------------------------------------------------------------
 
-namespace eParser {
-	int gVideoPid = 0, gAudioPid = 0;
-	std::vector<string> Split(std::string aBuffer, char aDelimiter);
-	void FileName(char* aRequest, char* aHttp, std::string& aOutData);
-	bool MetaData(std::string aMediaFileName);
-};
-using namespace eParser;
-//-------------------------------------------------------------------------------
+/*
+GET /1:0:19:2B66:3F3:1:C00000:0:0:0: HTTP/1.1
+Host: 192.168.102.177:8002
+User-Agent: VLC/2.0.8 LibVLC/2.0.8
+Range: bytes=0-
+Connection: close
+Icy-MetaData: 1
 
-/* GET /file?file=/home/kos/work/workspace/filestreamproxy/data/20131023%200630%20-%20FASHION%20TV%20-%20instant%20record.ts HTTP/1.0 */
+GET /file?file=/hdd/movie/20131023%201005%20-%20DW%20-%20Germany%20Today.ts HTTP/1.1
+*/
 int main(int argc, char** argv)
 {
 	char request[MAX_LINE_LENGTH] = {0};
+	int videopid = 0, audiopid = 0;
+
+	signal(SIGINT, SignalHandler);
 
 	if (!ReadRequest(request)) {
 		RETURN_ERR_400();
@@ -69,47 +80,137 @@ int main(int argc, char** argv)
 		RETURN_ERR_400("Not support request (%s).", http);
 	}
 
-	std::string srcfilename = "";
-	eParser::FileName(request, http, srcfilename);
-
-	bool isSuccessMeta = eParser::MetaData(srcfilename);
-
 #ifdef DEBUG_LOG
-	LOG("meta parsing result : %d, video : %d, audio : %d", isSuccessMeta, eParser::gVideoPid, eParser::gAudioPid);
+	LOG("%s", 	request + 5);
 #endif
 
-	gDeviceFd = open("/dev/bcm_enc0", O_RDWR);
-	if(gDeviceFd < 0 ) {
-		close(gDeviceFd);
-		RETURN_ERR_502("Fail to opne device.");
+	eTransCodingDevice transcoding;
+	if(transcoding.Open() == false) {
+		RETURN_ERR_502("Opne device failed.");
 	}
+	hTranscodingDevice = &transcoding;
 
-	if(isSuccessMeta) {
-		if(ioctl(gDeviceFd, 1, eParser::gVideoPid)) {
-			RETURN_ERR_502("Fail to set video pid");
+	bool ispidseted = false;
+	eNetworkPumpThread networkpump(transcoding.GetDeviceFd());
+	hNetworkPumpThread = &networkpump;
+
+	if(strncmp(request + 4, "/file?", 6) != 0) {
+		char authorization[MAX_LINE_LENGTH] = {0};
+		if(eParser::Authorization(authorization)) {
+			RETURN_ERR_401();
 		}
-		if(ioctl(gDeviceFd, 2, eParser::gAudioPid)) {
-			RETURN_ERR_502("Fail to set audio pid");
+
+		eUpstreamSocket upstreamsocket;
+		if(!upstreamsocket.Connect()) {
+			RETURN_ERR_502("Upstream connect failed.");
 		}
+		std::string responsedata = "";
+		if(upstreamsocket.Request(eParser::ServiceRef(request + 5, authorization), responsedata) < 0) {
+			RETURN_ERR_502("Upstream request failed.");
+		}
+
+		int demuxno = 0;
+		std::string wwwauthenticate = "";
+		std::vector<unsigned long> pidlist;
+		ispidseted = eParser::LiveStreamPid(responsedata, pidlist, demuxno, videopid, audiopid, wwwauthenticate);
+		if(ispidseted) {
+			if(transcoding.SetStreamPid(videopid, audiopid) == false) {
+				RETURN_ERR_502("Pid setting failed.");
+			}
+		} else {
+#ifdef DEBUG_LOG
+			LOG("Invalid upstream response.");
+#endif
+			RETURN_ERR_502("Invalid upstream response.");
+		}
+
+#ifdef DEBUG_LOG
+		LOG("stream pids parsing result : %d, video : %d, audio : %d, pids size : [%d]", ispidseted, videopid, audiopid, pidlist.size());
+		for(int j = 0; j < pidlist.size(); ++j) {
+			LOG("saved pid : [%x]", pidlist[j]);
+		}
+#endif
+
+		eDemuxPumpThread demuxpump;
+		if(!demuxpump.Open(demuxno)) {
+			RETURN_ERR_502("%s", demuxpump.GetMessage().c_str());
+		}
+		demuxpump.SetDeviceFd(transcoding.GetDeviceFd());
+		demuxpump.Start();
+		hDemuxPumpThread = &demuxpump;
+
+		if(pidlist.size() > 0) {
+			if(demuxpump.GetState() < eDemuxState::stSetedFilter) {
+				if(!demuxpump.SetFilter(pidlist)) {
+#ifdef DEBUG_LOG
+					LOG("Demux setting filter failed.");
+#endif
+					RETURN_ERR_502("Demux setting filter failed.");
+				}
+			}
+			if(!demuxpump.SetPidList(pidlist)) {
+#ifdef DEBUG_LOG
+				LOG("PID setting failed.");
+#endif
+				RETURN_ERR_502("PID setting failed.");
+			}
+		} else {
+#ifdef DEBUG_LOG
+			LOG("No found PID for selected stream.");
+#endif
+			RETURN_ERR_502("No found PID for selected stream.");
+		}
+#ifdef NORMAL_STREAMPROXY
+		demuxpump.Join();
+#else
+		if(transcoding.StartTranscoding()  == false) {
+			RETURN_ERR_502("Transcoding start failed.");
+		}
+		networkpump.Start();
+		networkpump.Join();
+		demuxpump.Stop();
+		demuxpump.Join();
+#endif
+	} else {
+		std::string srcfilename = "";
+		eParser::FileName(request, http, srcfilename);
+
+		ispidseted = eParser::MetaData(srcfilename, videopid, audiopid);
+		if(ispidseted) {
+			if(transcoding.SetStreamPid(videopid, audiopid) == false) {
+#ifdef DEBUG_LOG
+				LOG("No found PID for selected stream.");
+#endif
+				RETURN_ERR_502("Pid setting failed.");
+			}
+		}
+#ifdef DEBUG_LOG
+		LOG("meta parsing result : %d, video : %d, audio : %d", ispidseted, videopid, audiopid);
+#endif
+
+		eFilePumpThread filepump(transcoding.GetDeviceFd());
+		if(filepump.Open(srcfilename) == false) {
+#ifdef DEBUG_LOG
+			LOG("TS file open failed.");
+#endif
+			RETURN_ERR_502("TS file open failed.");
+		}
+		filepump.Start();
+		hFilePumpThread = &filepump;
+
+		if(transcoding.StartTranscoding() == false) {
+#ifdef DEBUG_LOG
+			LOG("Transcoding start failed.");
+#endif
+			RETURN_ERR_502("Transcoding start failed.");
+		}
+		filepump.SeekOffset(0);
+
+		networkpump.Start();
+		networkpump.Join();
+		filepump.Stop();
+		filepump.Join();
 	}
-
-	eFilePumpThread filepump(gDeviceFd, srcfilename);
-	filepump.Start();
-
-	sleep(1);
-
-	if(ioctl(gDeviceFd, 100, 0)) {
-		RETURN_ERR_502("Fail to start transcoding.");
-	}
-	eNetworkPumpThread networkpump(gDeviceFd);
-	networkpump.Start();
-
-	networkpump.Join();
-	filepump.Stop();
-	filepump.Join();
-
-	close(gDeviceFd);
-
 #ifdef DEBUG_LOG
 	fclose(fpLog);
 #endif
@@ -117,122 +218,37 @@ int main(int argc, char** argv)
 }
 //-------------------------------------------------------------------------------
 
-std::vector<string> eParser::Split(std::string aBuffer, char aDelimiter)
+char* ReadRequest(char* aRequest)
 {
-	int b = 0, i = 0, l = aBuffer.length();
-	std::vector<string> t;
-
-	while (i++ < l) {
-		if (aBuffer[i] == aDelimiter) {
-			t.push_back(aBuffer.substr(b, i-b));
-			b = i + 1;
-			continue;
-		}
-		if (i == (l - 1)) {
-			t.push_back(aBuffer.substr(b, l));
-		}
-	}
-	return t;
+	return fgets(aRequest, MAX_LINE_LENGTH-1, stdin);
 }
 //-------------------------------------------------------------------------------
 
-void eParser::FileName(char* aRequest, char* aHttp, std::string& aOutData)
+void SignalHandler(int aSigNo)
 {
-	char tmp[256] = {0};
-	char* file = aRequest + 5;
-	if (strncmp(file, "file?file=", strlen("file?file="))) {
-		return;
-	}
-	strncpy(tmp, file+10, aHttp-file-10);
-	aOutData = eURIDecoder().Decode(tmp);
-}
-//-------------------------------------------------------------------------------
-
-namespace eCacheID {
-	enum {
-		cVPID = 0,
-		cAPID,
-		cTPID,
-		cPCRPID,
-		cAC3PID,
-		cVTYPE,
-		cACHANNEL,
-		cAC3DELAY,
-		cPCMDELAY,
-		cSUBTITLE,
-		cacheMax
-	};
-};
-//-------------------------------------------------------------------------------
-
-/* f:40,c:00007b,c:01008f,c:03007b */
-bool eParser::MetaData(std::string aMediaFileName)
-{
-	std::string metafilename = aMediaFileName;
-	metafilename += ".meta";
-
-	std::ifstream ifs(metafilename.c_str());
-
-	if (!ifs.is_open()) {
+	switch(aSigNo) {
+	case (SIGINT):
 #ifdef DEBUG_LOG
-		LOG("metadata is not exists..");
+		LOG("Detected SIGINT.");
 #endif
-		return false;
-	}
-
-	size_t rc = 0, i = 0;
-	char buffer[1024] = {0};
-	while (!ifs.eof()) {
-		ifs.getline(buffer, 1024);
-		if (i++ == 7) {
-#ifdef DEBUG_LOG
-				LOG("%d [%s]", i, buffer);
-#endif
-			std::vector<string> tokens = eParser::Split(buffer, ',');
-			if(tokens.size() < 3) {
-#ifdef DEBUG_LOG
-				LOG("pid count size error : %d", tokens.size());
-#endif
-				return false;
-			}
-
-			int setting_done = false;
-			for (int ii = 0; ii < tokens.size(); ++ii) {
-				std::string token = tokens[ii];
-				if(token.at(0) != 'c') continue;
-
-				int cache_id = atoi(token.substr(2,2).c_str());
-#ifdef DEBUG_LOG
-				LOG("token : %d [%s], chcke_id : [%d]", ii, token.c_str(), cache_id);
-#endif
-				switch(cache_id) {
-					case(eCacheID::cVPID):
-						gVideoPid = strtol(token.substr(4,4).c_str(), NULL, 16);
-#ifdef DEBUG_LOG
-						LOG("video pid : %d", gVideoPid);
-#endif
-						setting_done = (gVideoPid && gAudioPid) ? true : false;
-						break;
-					case(eCacheID::cAC3PID):
-						gAudioPid = strtol(token.substr(4,4).c_str(), NULL, 16);
-#ifdef DEBUG_LOG
-						LOG("audio pid : %d", gAudioPid);
-#endif
-						break;
-					case(eCacheID::cAPID):
-						gAudioPid = strtol(token.substr(4,4).c_str(), NULL, 16);
-#ifdef DEBUG_LOG
-						LOG("audio pid : %d", gAudioPid);
-#endif
-						setting_done = (gVideoPid && gAudioPid) ? true : false;
-						break;
-				}
-				if(setting_done) break;
-			}
-			break;
+		if(hFilePumpThread) {
+			hFilePumpThread->Stop();
 		}
+		if(hDemuxPumpThread) {
+			hDemuxPumpThread->Stop();
+		}
+		if(hNetworkPumpThread) {
+			hNetworkPumpThread->Stop();
+		}
+		if(hTranscodingDevice) {
+			hTranscodingDevice->Close();
+		}
+		sleep(2);
+		exit(1);
 	}
-	ifs.close();
-	return true;
 }
 //-------------------------------------------------------------------------------
+
+
+
+

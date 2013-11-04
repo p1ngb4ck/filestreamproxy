@@ -16,9 +16,17 @@
 #define RETURN_ERR_502(FMT,...) { printf("HTTP/1.0 502 Bad Gateway\r\n"FMT"\r\n\r\n", ##__VA_ARGS__); return 1; }
 //-------------------------------------------------------------------------------
 
+char* ReadRequest(char* aRequest);
+
+#include <time.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/time.h>
+
 #ifdef DEBUG_LOG
-extern FILE* fpLog;
-#define LOG(X,...) { fprintf(fpLog, "%s:%s(%d) "X"\n",__FILE__,__FUNCTION__,__LINE__,##__VA_ARGS__); fflush(fpLog); }
-#endif
+	extern FILE* fpLog;
+	#define LOG(X,...) { fprintf(fpLog, "%s:%s(%d) "X"\n",__FILE__,__FUNCTION__,__LINE__,##__VA_ARGS__); fflush(fpLog); }
+#endif /*DEBUG_LOG*/
 
 #endif /* FILESTREAMPROXY_H_ */
