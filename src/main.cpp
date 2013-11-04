@@ -60,7 +60,7 @@ GET /file?file=/hdd/movie/20131023%201005%20-%20DW%20-%20Germany%20Today.ts HTTP
 int main(int argc, char** argv)
 {
 	char request[MAX_LINE_LENGTH] = {0};
-	int videopid = 0, audiopid = 0;
+	int videopid = 0, audiopid = 0, pmtid = 0;
 
 	signal(SIGINT, SignalHandler);
 
@@ -112,9 +112,9 @@ int main(int argc, char** argv)
 		int demuxno = 0;
 		std::string wwwauthenticate = "";
 		std::vector<unsigned long> pidlist;
-		ispidseted = eParser::LiveStreamPid(responsedata, pidlist, demuxno, videopid, audiopid, wwwauthenticate);
+		ispidseted = eParser::LiveStreamPid(responsedata, pidlist, demuxno, videopid, audiopid, pmtid, wwwauthenticate);
 		if(ispidseted) {
-			if(transcoding.SetStreamPid(videopid, audiopid) == false) {
+			if(transcoding.SetStreamPid(videopid, audiopid, pmtid) == false) {
 				RETURN_ERR_502("Pid setting failed.");
 			}
 		} else {
@@ -125,7 +125,7 @@ int main(int argc, char** argv)
 		}
 
 #ifdef DEBUG_LOG
-		LOG("stream pids parsing result : %d, video : %d, audio : %d, pids size : [%d]", ispidseted, videopid, audiopid, pidlist.size());
+		LOG("stream pids parsing result : %d, video : %d, audio : %d, pmt : %d, pids size : [%d]", ispidseted, videopid, audiopid, pmtid, pidlist.size());
 		for(int j = 0; j < pidlist.size(); ++j) {
 			LOG("saved pid : [%x]", pidlist[j]);
 		}

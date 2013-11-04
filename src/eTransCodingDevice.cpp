@@ -19,6 +19,12 @@
 //#define LOG(X,...) { do{}while(0); }
 #endif
 
+#define IOCTL_OPCODE_SET_VPID   1
+#define IOCTL_OPCODE_SET_APID   2
+#define IOCTL_OPCODE_SET_PMTPID 3
+#define IOCTL_OPCODE_START_TRANSCODING 100
+#define IOCTL_OPCODE_STOP_TRANSCODING  200
+
 eTransCodingDevice::eTransCodingDevice()
 	: mDeviceFd(0)
 {
@@ -66,13 +72,13 @@ int eTransCodingDevice::GetDeviceFd()
 
 bool eTransCodingDevice::SetStreamPid(int aVideoPid, int aAudioPid)
 {
-	if(ioctl(mDeviceFd, 1, aVideoPid) < 0) {
+	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_VPID, aVideoPid) < 0) {
 #ifdef DEBUG_LOG
 	LOG("setting stream video pid failed.");
 #endif
 		return false;
 	}
-	if(ioctl(mDeviceFd, 2, aAudioPid) < 0) {
+	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_APID, aAudioPid) < 0) {
 #ifdef DEBUG_LOG
 	LOG("setting stream audio pid failed.");
 #endif
@@ -85,9 +91,36 @@ bool eTransCodingDevice::SetStreamPid(int aVideoPid, int aAudioPid)
 }
 //-------------------------------------------------------------------------------
 
+bool eTransCodingDevice::SetStreamPid(int aVideoPid, int aAudioPid, int aPmtPid)
+{
+	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_VPID, aVideoPid) < 0) {
+#ifdef DEBUG_LOG
+	LOG("setting stream video pid failed.");
+#endif
+		return false;
+	}
+	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_APID, aAudioPid) < 0) {
+#ifdef DEBUG_LOG
+	LOG("setting stream audio pid failed.");
+#endif
+		return false;
+	}
+	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_PMTPID, aPmtPid) < 0) {
+#ifdef DEBUG_LOG
+	LOG("setting stream pmt pid failed.");
+#endif
+		return false;
+	}
+#ifdef DEBUG_LOG
+	LOG("setting stream pid ok.");
+#endif
+	return true;
+}
+//-------------------------------------------------------------------------------
+
 bool eTransCodingDevice::StartTranscoding()
 {
-	if(ioctl(mDeviceFd, 100, 0) < 0) {
+	if(ioctl(mDeviceFd, IOCTL_OPCODE_START_TRANSCODING, 0) < 0) {
 #ifdef DEBUG_LOG
 	LOG("start transcoding failed.");
 #endif
@@ -102,6 +135,6 @@ bool eTransCodingDevice::StartTranscoding()
 
 void eTransCodingDevice::StopTranscoding()
 {
-	ioctl(mDeviceFd, 200, 0);
+	ioctl(mDeviceFd, IOCTL_OPCODE_STOP_TRANSCODING, 0);
 }
 //-------------------------------------------------------------------------------

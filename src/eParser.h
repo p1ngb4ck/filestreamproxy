@@ -21,7 +21,7 @@ public:
 	static void FileName(char* aRequest, char* aHttp, std::string& aOutData);
 	static bool MetaData(std::string aMediaFileName, int& aVideoPid, int& aAudioPid);
 	static bool LiveStreamPid(std::string aData, std::vector<unsigned long>& aPidList,
-						      int& aDemuxId, int& aVideoPid, int& aAudioPid, std::string& aWWWAuth);
+						      int& aDemuxId, int& aVideoPid, int& aAudioPid, int& aPmtPid, std::string& aWWWAuth);
 	static std::string ServiceRef(std::string aData, std::string aAuthorization);
 };
 //-------------------------------------------------------------------------------

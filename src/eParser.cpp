@@ -172,7 +172,7 @@ unsigned long StripPid(std::string aData, std::string& aOutType)
 //-------------------------------------------------------------------------------
 
 bool eParser::LiveStreamPid(std::string aData, std::vector<unsigned long>& aPidList,
-						    int& aDemuxId, int& aVideoPid, int& aAudioPid, std::string& aWWWAuth)
+						    int& aDemuxId, int& aVideoPid, int& aAudioPid, int& aPmtPid, std::string& aWWWAuth)
 {
 	int state = 0;
 	int responsecode = 0;
@@ -234,6 +234,11 @@ bool eParser::LiveStreamPid(std::string aData, std::vector<unsigned long>& aPidL
 									aAudioPid = pid;
 								}
 							}
+							if(aPmtPid == 0) {
+								if(strcmp(pidtype.c_str(), "pmt") == 0) {
+									aPmtPid = pid;
+								}
+							}
 
 							if(!eDemuxPumpThread::ExistPid(aPidList, pid)) {
 								aPidList.push_back(pid);
@@ -241,9 +246,9 @@ bool eParser::LiveStreamPid(std::string aData, std::vector<unsigned long>& aPidL
 #ifdef DEBUG_LOG
 							LOG("pid : %s [%04X]", pidtokens[ii].c_str(), pid);
 #endif
-//							if(aAudioPid && aVideoPid) {
-//								return true;
-//							}
+							if(aAudioPid && aVideoPid) {
+								return true;
+							}
 						}
 					}
 				}

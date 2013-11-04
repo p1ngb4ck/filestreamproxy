@@ -22,6 +22,7 @@ public:
 	int GetDeviceFd();
 
 	bool SetStreamPid(int aVideoPid, int aAudioPid);
+	bool SetStreamPid(int aVideoPid, int aAudioPid, int aPmtPid);
 
 	bool StartTranscoding();
 	void StopTranscoding();
