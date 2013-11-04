@@ -14,8 +14,8 @@
 class eFilePumpThread : public uThread
 {
 private:
+	int mFileFd;
 	int mDeviceFd;
-	int mFileFd, mFileSize;
 	bool mTermFlag;
 
 protected:

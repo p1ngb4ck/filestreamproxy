@@ -24,7 +24,7 @@
 #endif
 
 eFilePumpThread::eFilePumpThread(int aDeviceFd)
-	: mDeviceFd(aDeviceFd), mFileFd(0), mFileSize(0), mTermFlag(false),
+	: mDeviceFd(aDeviceFd), mFileFd(0), mTermFlag(false),
 	  uThread("FilePumpThread", TYPE_DETACHABLE)
 {
 }
@@ -42,8 +42,6 @@ bool eFilePumpThread::Open(std::string aFileName)
 	if(mFileFd <= 0) {
 		return false;
 	}
-	mFileSize = lseek(mFileFd, 0, SEEK_END);
-	SeekOffset(0);
 	return true;
 }
 //-------------------------------------------------------------------------------
@@ -59,11 +57,10 @@ void eFilePumpThread::Close()
 
 void eFilePumpThread::SeekOffset(int aOffset)
 {
-	int offset = aOffset;
-	if(offset > mFileSize) {
-		offset = mFileSize;
-	}
-	lseek(mFileFd, offset,  SEEK_SET);
+#ifdef DEBUG_LOG
+	LOG("lseek to %d", aOffset);
+#endif
+	lseek(mFileFd, aOffset,  SEEK_SET);
 }
 //-------------------------------------------------------------------------------
 
