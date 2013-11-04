@@ -1,4 +1,6 @@
+streamproxy
 filestreamproxy
+transtreamproxy
 *.ts
 *.log
 *.o

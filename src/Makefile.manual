@@ -8,9 +8,9 @@
 
 include .config
 
-VER = v1.0
+VER = v2.0
 REV = $(shell cat .revision)
-BIN = filestreamproxy
+BIN = transtreamproxy
 
 SRC = \
 	main.cpp \
@@ -104,7 +104,7 @@ erase:clean
 
 .version:
 	@echo "/*"								>  version.h 
-	@echo " * uVersion.h"				>> version.h
+	@echo " * version.h"				>> version.h
 	@echo " * Auto generated code."		>> version.h
 	@echo " */"							>> version.h
 	@echo "#ifndef UVERSION_H_"			>> version.h

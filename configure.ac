@@ -2,8 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 #AC_PREREQ([2.69])
-AC_INIT([filestreamproxy], [1.0.0], [oskwon@marusys.com])
-AM_INIT_AUTOMAKE([filestreamproxy], [1.0.0])
+AC_INIT([transtreamproxy], [2.0.0], [kos@dev3])
+AM_INIT_AUTOMAKE([transtreamproxy], [2.0.0])
 
 #AC_CONFIG_SRCDIR([main.cpp])
 AC_CONFIG_HEADERS([config.h])
