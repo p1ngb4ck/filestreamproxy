@@ -25,9 +25,6 @@ public:
 	virtual ~eUpstreamSocket();
 
 	bool Connect();
-	int Send(std::string aData);
-	int Recv(std::string& aData);
-
 	int Request(std::string aSendData, std::string& aRecvData);
 };
 //-------------------------------------------------------------------------------

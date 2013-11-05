@@ -183,6 +183,9 @@ bool eParser::LiveStreamPid(std::string aData, std::vector<unsigned long>& aPidL
 	if(uStringTool::Split(aData, '\n', tokens)) {
 		int tokenlen = tokens.size();
 		for(int i = 0; i < tokenlen; i++) {
+			if(!aVideoPid || !aAudioPid || !aPmtPid) {
+				aVideoPid = aAudioPid = aPmtPid = 0;
+			}
 			std::string line = uStringTool::Trim(tokens[i]);
 #ifdef DEBUG_LOG
 			LOG("[%d] [%s]", state, line.c_str());
@@ -224,31 +227,21 @@ bool eParser::LiveStreamPid(std::string aData, std::vector<unsigned long>& aPidL
 							if(pid == -1) {
 								continue;
 							}
-							if(aVideoPid == 0) {
+							if(!aVideoPid || !aAudioPid || !aPmtPid) {
 								if(strcmp(pidtype.c_str(), "video") == 0) {
 									aVideoPid = pid;
-								}
-							}
-							if(aAudioPid == 0) {
-								if(strcmp(pidtype.c_str(), "audio") == 0) {
+								} else if(strcmp(pidtype.c_str(), "audio") == 0) {
 									aAudioPid = pid;
-								}
-							}
-							if(aPmtPid == 0) {
-								if(strcmp(pidtype.c_str(), "pmt") == 0) {
+								} else if(strcmp(pidtype.c_str(), "pmt") == 0) {
 									aPmtPid = pid;
 								}
 							}
-
 							if(!eDemuxPumpThread::ExistPid(aPidList, pid)) {
 								aPidList.push_back(pid);
 							}
 #ifdef DEBUG_LOG
 							LOG("pid : %s [%04X]", pidtokens[ii].c_str(), pid);
 #endif
-							if(aAudioPid && aVideoPid) {
-								return true;
-							}
 						}
 					}
 				}

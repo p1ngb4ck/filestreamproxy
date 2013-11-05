@@ -46,55 +46,33 @@ bool eUpstreamSocket::Connect()
 }
 //-------------------------------------------------------------------------------
 
-int eUpstreamSocket::Send(std::string aData)
-{
-#ifdef DEBUG_LOG
-		LOG("Send : %s", aData.c_str());
-#endif
-	return write(mSockFd, aData.c_str(), aData.length());
-}
-//-------------------------------------------------------------------------------
-
-int eUpstreamSocket::Recv(std::string& aData)
-{
-	int rc = 0;
-	char buffer[4096] = {0};
-	struct pollfd pollevt;
-
-	pollevt.fd     = mSockFd;
-	pollevt.events = POLLIN | POLLERR;
-
-	while(true) {
-		buffer[0] = 0;
-		pollevt.revents = 0;
-
-		rc = poll((struct pollfd*)&pollevt, 1, 1000);
-
-		if (pollevt.revents == 0) {
-			break;
-		} else if (pollevt.revents & POLLIN) {
-			rc = read(mSockFd, buffer, 4096);
-#ifdef DEBUG_LOG
-			LOG("Buffer : %s", buffer);
-#endif
-			aData += buffer;
-		}
-	}
-	return aData.length();
-}
-//-------------------------------------------------------------------------------
-
 int eUpstreamSocket::Request(std::string aSendData, std::string& aRecvData)
 {
-	int rc = Send(aSendData);
-	if(rc > 0) {
-		std::string recvdata;
-		rc = Recv(recvdata);
-		if(rc > 0) {
-			aRecvData = recvdata;
+#ifdef DEBUG_LOG
+	LOG("Send : %s", aSendData.c_str());
+#endif
+	if(write(mSockFd, aSendData.c_str(), aSendData.length()) > 0) {
+		struct pollfd pollevt;
+		pollevt.fd      = mSockFd;
+		pollevt.events  = POLLIN | POLLERR;
+		pollevt.revents = 0;
+
+		while(true) {
+			char buffer[4096] = {0};
+			if(read(mSockFd, buffer, 4096) <= 0) {
+				break;
+			}
+	#ifdef DEBUG_LOG
+			LOG("Buffer : %s", buffer);
+	#endif
+			aRecvData += buffer;
+			if (poll((struct pollfd*)&pollevt, 1, 1000) == 0) {
+				break;
+			}
 		}
+		return aRecvData.length();
 	}
-	return rc;
+	return -1;
 }
 //-------------------------------------------------------------------------------
 

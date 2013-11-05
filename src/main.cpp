@@ -31,7 +31,7 @@
 #include "eNetworkPumpThread.h"
 
 #ifdef DEBUG_LOG
-FILE* fpLog = fopen("/tmp/filestreamproxy.log", "w");
+FILE* fpLog = 0;
 //#undef LOG
 //#define LOG(X,...) { do{}while(0); }
 #endif
@@ -62,6 +62,10 @@ int main(int argc, char** argv)
 	char request[MAX_LINE_LENGTH] = {0};
 	int videopid = 0, audiopid = 0, pmtid = 0;
 
+#ifdef DEBUG_LOG
+	fpLog = fopen("/tmp/transtreamproxy.log", "w");
+#endif
+
 	signal(SIGINT, SignalHandler);
 
 	if (!ReadRequest(request)) {
@@ -77,6 +81,9 @@ int main(int argc, char** argv)
 
 	char* http = strchr(request + 5, ' ');
 	if (!http || strncmp(http, " HTTP/1.", 7)) {
+#ifdef DEBUG_LOG
+		LOG("Not support request (%s).", http);
+#endif
 		RETURN_ERR_400("Not support request (%s).", http);
 	}
 
@@ -86,6 +93,9 @@ int main(int argc, char** argv)
 
 	eTransCodingDevice transcoding;
 	if(transcoding.Open() == false) {
+#ifdef DEBUG_LOG
+		LOG("Opne device failed.");
+#endif
 		RETURN_ERR_502("Opne device failed.");
 	}
 	hTranscodingDevice = &transcoding;
@@ -102,10 +112,16 @@ int main(int argc, char** argv)
 
 		eUpstreamSocket upstreamsocket;
 		if(!upstreamsocket.Connect()) {
+#ifdef DEBUG_LOG
+			LOG("Upstream connect failed.");
+#endif
 			RETURN_ERR_502("Upstream connect failed.");
 		}
 		std::string responsedata = "";
 		if(upstreamsocket.Request(eParser::ServiceRef(request + 5, authorization), responsedata) < 0) {
+#ifdef DEBUG_LOG
+			LOG("Upstream request failed.");
+#endif
 			RETURN_ERR_502("Upstream request failed.");
 		}
 
@@ -115,6 +131,9 @@ int main(int argc, char** argv)
 		ispidseted = eParser::LiveStreamPid(responsedata, pidlist, demuxno, videopid, audiopid, pmtid, wwwauthenticate);
 		if(ispidseted) {
 			if(transcoding.SetStreamPid(videopid, audiopid, pmtid) == false) {
+#ifdef DEBUG_LOG
+				LOG("Pid setting failed.");
+#endif
 				RETURN_ERR_502("Pid setting failed.");
 			}
 		} else {
@@ -132,14 +151,17 @@ int main(int argc, char** argv)
 #endif
 
 		eDemuxPumpThread demuxpump;
-		if(!demuxpump.Open(demuxno)) {
-			RETURN_ERR_502("%s", demuxpump.GetMessage().c_str());
-		}
-		demuxpump.SetDeviceFd(transcoding.GetDeviceFd());
-		demuxpump.Start();
-		hDemuxPumpThread = &demuxpump;
-
 		if(pidlist.size() > 0) {
+			if(!demuxpump.Open(demuxno)) {
+#ifdef DEBUG_LOG
+				LOG("Demux open failed.");
+#endif
+				RETURN_ERR_502("%s", demuxpump.GetMessage().c_str());
+			}
+			demuxpump.SetDeviceFd(transcoding.GetDeviceFd());
+			demuxpump.Start();
+			hDemuxPumpThread = &demuxpump;
+
 			if(demuxpump.GetState() < eDemuxState::stSetedFilter) {
 				if(!demuxpump.SetFilter(pidlist)) {
 #ifdef DEBUG_LOG

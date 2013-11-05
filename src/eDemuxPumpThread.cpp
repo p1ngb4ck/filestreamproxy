@@ -230,7 +230,7 @@ bool eDemuxPumpThread::SetPidList(std::vector<unsigned long>& aPidList)
 		rc = ioctl(mDemuxFd, DMX_ADD_PID, pid);
 #endif
 #ifdef DEBUG_LOG
-		LOG("add [%x]!!!", pid);
+		LOG("add [%x].", pid);
 #endif
 		if(rc < 0) {
 			mErrMessage = "DMX_ADD_PID FAILED.";
@@ -259,7 +259,7 @@ bool eDemuxPumpThread::SetPidList(std::vector<unsigned long>& aPidList)
 		rc = ioctl(mDemuxFd, DMX_REMOVE_PID, pid);
 #endif
 #ifdef DEBUG_LOG
-		LOG("remove [%x]!!!", pid);
+		LOG("remove [%x].", pid);
 #endif
 		if(rc < 0) {
 			mErrMessage = "DMX_REMOVE_PID FAILED.";

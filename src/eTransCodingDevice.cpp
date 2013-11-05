@@ -72,17 +72,21 @@ int eTransCodingDevice::GetDeviceFd()
 
 bool eTransCodingDevice::SetStreamPid(int aVideoPid, int aAudioPid)
 {
-	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_VPID, aVideoPid) < 0) {
+	if(aVideoPid > 0) {
+		if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_VPID, aVideoPid) < 0) {
 #ifdef DEBUG_LOG
-	LOG("setting stream video pid failed.");
+			LOG("setting stream video pid failed.");
 #endif
-		return false;
+			return false;
+		}
 	}
-	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_APID, aAudioPid) < 0) {
+	if(aAudioPid > 0) {
+		if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_APID, aAudioPid) < 0) {
 #ifdef DEBUG_LOG
-	LOG("setting stream audio pid failed.");
+			LOG("setting stream audio pid failed.");
 #endif
-		return false;
+			return false;
+		}
 	}
 #ifdef DEBUG_LOG
 	LOG("setting stream pid ok.");
@@ -93,23 +97,29 @@ bool eTransCodingDevice::SetStreamPid(int aVideoPid, int aAudioPid)
 
 bool eTransCodingDevice::SetStreamPid(int aVideoPid, int aAudioPid, int aPmtPid)
 {
-	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_VPID, aVideoPid) < 0) {
+	if(aVideoPid > 0) {
+		if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_VPID, aVideoPid) < 0) {
 #ifdef DEBUG_LOG
-	LOG("setting stream video pid failed.");
+			LOG("setting stream video pid failed.");
 #endif
-		return false;
+			return false;
+		}
 	}
-	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_APID, aAudioPid) < 0) {
+	if(aAudioPid > 0) {
+		if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_APID, aAudioPid) < 0) {
 #ifdef DEBUG_LOG
-	LOG("setting stream audio pid failed.");
+			LOG("setting stream audio pid failed.");
 #endif
-		return false;
+			return false;
+		}
 	}
-	if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_PMTPID, aPmtPid) < 0) {
+	if(aPmtPid > 0) {
+		if(ioctl(mDeviceFd, IOCTL_OPCODE_SET_PMTPID, aPmtPid) < 0) {
 #ifdef DEBUG_LOG
-	LOG("setting stream pmt pid failed.");
+			LOG("setting stream pmt pid failed.");
 #endif
-		return false;
+			return false;
+		}
 	}
 #ifdef DEBUG_LOG
 	LOG("setting stream pid ok.");
