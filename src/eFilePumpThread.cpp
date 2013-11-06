@@ -5,10 +5,6 @@
  *      Author: kos
  */
 
-//#include "uLogger.h"
-
-//#include "uDemux.h"
-
 #include <poll.h>
 #include <stdio.h>
 #include <unistd.h>

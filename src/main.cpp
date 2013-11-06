@@ -14,6 +14,8 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <dirent.h>
 
 #include <vector>
 #include <string>
@@ -31,6 +33,7 @@
 #include "eNetworkPumpThread.h"
 
 #ifdef DEBUG_LOG
+int myPid = 0;
 FILE* fpLog = 0;
 //#undef LOG
 //#define LOG(X,...) { do{}while(0); }
@@ -44,7 +47,8 @@ eDemuxPumpThread*   hDemuxPumpThread   = 0;
 eNetworkPumpThread* hNetworkPumpThread = 0;
 eTransCodingDevice* hTranscodingDevice = 0;
 
-void SignalHandler(int aSigNo);
+void SigHandler(int aSigNo);
+std::vector<int> FindPid(std::string aProcName, int aMyPid);
 //-------------------------------------------------------------------------------
 
 /*
@@ -63,10 +67,18 @@ int main(int argc, char** argv)
 	int videopid = 0, audiopid = 0, pmtid = 0;
 
 #ifdef DEBUG_LOG
-	fpLog = fopen("/tmp/transtreamproxy.log", "w");
+	myPid = getpid();
+	fpLog = fopen("/tmp/transtreamproxy.log", "a+");
 #endif
 
-	signal(SIGINT, SignalHandler);
+	std::vector<int> pidlist = FindPid(argv[0], getpid());
+	for(int i = 0; i < pidlist.size(); ++i) {
+#ifdef DEBUG_LOG
+		LOG("send sigint to %d", pidlist[i]);
+#endif
+		kill(pidlist[i], SIGINT);
+	}
+	signal(SIGINT, SigHandler);
 
 	if (!ReadRequest(request)) {
 		RETURN_ERR_400();
@@ -91,19 +103,8 @@ int main(int argc, char** argv)
 	LOG("%s", 	request + 5);
 #endif
 
-	eTransCodingDevice transcoding;
-	if(transcoding.Open() == false) {
-#ifdef DEBUG_LOG
-		LOG("Opne device failed.");
-#endif
-		RETURN_ERR_502("Opne device failed.");
-	}
-	hTranscodingDevice = &transcoding;
-
-	bool ispidseted = false;
-	eNetworkPumpThread networkpump(transcoding.GetDeviceFd());
-	hNetworkPumpThread = &networkpump;
-
+	bool isfilestream = true;
+	std::string responsedata = "";
 	if(strncmp(request + 4, "/file?", 6) != 0) {
 		char authorization[MAX_LINE_LENGTH] = {0};
 		if(eParser::Authorization(authorization)) {
@@ -117,14 +118,30 @@ int main(int argc, char** argv)
 #endif
 			RETURN_ERR_502("Upstream connect failed.");
 		}
-		std::string responsedata = "";
+
 		if(upstreamsocket.Request(eParser::ServiceRef(request + 5, authorization), responsedata) < 0) {
 #ifdef DEBUG_LOG
 			LOG("Upstream request failed.");
 #endif
-			RETURN_ERR_502("Upstream request failed.");
+			RETURN_ERR_502();
 		}
+		isfilestream = false;
+	}
 
+	eTransCodingDevice transcoding;
+	if(transcoding.Open() == false) {
+#ifdef DEBUG_LOG
+		LOG("Open device failed.");
+#endif
+		return 1;//RETURN_ERR_502("Open device failed.");
+	}
+	hTranscodingDevice = &transcoding;
+
+	bool ispidseted = false;
+	eNetworkPumpThread networkpump(transcoding.GetDeviceFd());
+	hNetworkPumpThread = &networkpump;
+
+	if(!isfilestream) {
 		int demuxno = 0;
 		std::string wwwauthenticate = "";
 		std::vector<unsigned long> pidlist;
@@ -134,7 +151,7 @@ int main(int argc, char** argv)
 #ifdef DEBUG_LOG
 				LOG("Pid setting failed.");
 #endif
-				RETURN_ERR_502("Pid setting failed.");
+				return 1;//RETURN_ERR_502("Pid setting failed.");
 			}
 		} else {
 #ifdef DEBUG_LOG
@@ -156,7 +173,7 @@ int main(int argc, char** argv)
 #ifdef DEBUG_LOG
 				LOG("Demux open failed.");
 #endif
-				RETURN_ERR_502("%s", demuxpump.GetMessage().c_str());
+				return 1;//RETURN_ERR_502("%s", demuxpump.GetMessage().c_str());
 			}
 			demuxpump.SetDeviceFd(transcoding.GetDeviceFd());
 			demuxpump.Start();
@@ -167,7 +184,7 @@ int main(int argc, char** argv)
 #ifdef DEBUG_LOG
 					LOG("Demux setting filter failed.");
 #endif
-					RETURN_ERR_502("Demux setting filter failed.");
+					return 1;//RETURN_ERR_502("Demux setting filter failed.");
 				}
 			}
 			if(!demuxpump.SetPidList(pidlist)) {
@@ -180,13 +197,14 @@ int main(int argc, char** argv)
 #ifdef DEBUG_LOG
 			LOG("No found PID for selected stream.");
 #endif
-			RETURN_ERR_502("No found PID for selected stream.");
+			return 1;//RETURN_ERR_502("No found PID for selected stream.");
 		}
+
 #ifdef NORMAL_STREAMPROXY
 		demuxpump.Join();
 #else
 		if(transcoding.StartTranscoding()  == false) {
-			RETURN_ERR_502("Transcoding start failed.");
+			return 1;//RETURN_ERR_502("Transcoding start failed.");
 		}
 		networkpump.Start();
 		networkpump.Join();
@@ -203,7 +221,7 @@ int main(int argc, char** argv)
 #ifdef DEBUG_LOG
 				LOG("No found PID for selected stream.");
 #endif
-				RETURN_ERR_502("Pid setting failed.");
+				return 1;//RETURN_ERR_502("Pid setting failed.");
 			}
 		}
 #ifdef DEBUG_LOG
@@ -215,7 +233,7 @@ int main(int argc, char** argv)
 #ifdef DEBUG_LOG
 			LOG("TS file open failed.");
 #endif
-			RETURN_ERR_502("TS file open failed.");
+			RETURN_ERR_503("TS file open failed.");
 		}
 		filepump.Start();
 		hFilePumpThread = &filepump;
@@ -224,7 +242,7 @@ int main(int argc, char** argv)
 #ifdef DEBUG_LOG
 			LOG("Transcoding start failed.");
 #endif
-			RETURN_ERR_502("Transcoding start failed.");
+			return 1;//RETURN_ERR_502("Transcoding start failed.");
 		}
 		filepump.SeekOffset(0);
 
@@ -246,31 +264,49 @@ char* ReadRequest(char* aRequest)
 }
 //-------------------------------------------------------------------------------
 
-void SignalHandler(int aSigNo)
+void SigHandler(int aSigNo)
 {
 	switch(aSigNo) {
-	case (SIGINT):
+	case SIGINT:
 #ifdef DEBUG_LOG
-		LOG("Detected SIGINT.");
+		LOG("SIGINT detected.");
 #endif
-		if(hFilePumpThread) {
-			hFilePumpThread->Stop();
-		}
-		if(hDemuxPumpThread) {
-			hDemuxPumpThread->Stop();
-		}
-		if(hNetworkPumpThread) {
-			hNetworkPumpThread->Stop();
-		}
-		if(hTranscodingDevice) {
-			hTranscodingDevice->Close();
-		}
-		sleep(2);
-		exit(1);
+		exit(0);
 	}
 }
 //-------------------------------------------------------------------------------
 
+std::vector<int> FindPid(std::string aProcName, int aMyPid)
+{
+	std::vector<int> pidlist;
+	char cmdlinepath[256] = {0};
+	DIR* d = opendir("/proc");
+	if (d != 0) {
+		struct dirent* de;
+		while ((de = readdir(d)) != 0) {
+			int pid = atoi(de->d_name);
+			if (pid > 0) {
+				sprintf(cmdlinepath, "/proc/%s/cmdline", de->d_name);
 
-
+				std::string cmdline;
+				std::ifstream cmdlinefile(cmdlinepath);
+				std::getline(cmdlinefile, cmdline);
+				if (!cmdline.empty()) {
+					size_t pos = cmdline.find('\0');
+					if (pos != string::npos)
+					cmdline = cmdline.substr(0, pos);
+					pos = cmdline.rfind('/');
+					if (pos != string::npos)
+					cmdline = cmdline.substr(pos + 1);
+					if ((aProcName == cmdline) && (aMyPid != pid)) {
+						pidlist.push_back(pid);
+					}
+				}
+			}
+		}
+		closedir(d);
+	}
+	return pidlist;
+}
+//-------------------------------------------------------------------------------
 
