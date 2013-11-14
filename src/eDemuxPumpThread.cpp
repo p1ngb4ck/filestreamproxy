@@ -95,7 +95,7 @@ Server: stream_enigma2\r\n\
 #endif
 			if(wc != rc) {
 #ifdef DEBUG_LOG
-				LOG("write fail.. rc[%d], wc[%d]", rc, wc);
+				LOG("need retry write.. rc[%d], wc[%d]", rc, wc);
 #endif
 				int read_len = rc;
 				fd_set device_writefds;
@@ -107,6 +107,9 @@ Server: stream_enigma2\r\n\
 					if (select(mDeviceFd + 1, 0, &device_writefds, 0, 0) < 0)
 						break;
 					wc = write(mDeviceFd, buffer + i, read_len - i);
+#ifdef DEBUG_LOG
+					LOG("-> retry write.. rc[%d], wc[%d]", read_len - i, wc);
+#endif
 				}
 			}
 		}
@@ -150,6 +153,7 @@ bool eDemuxPumpThread::Open(int aDemuxId)
 void eDemuxPumpThread::Close()
 {
 	mState = eDemuxState::stNotOpened;
+	ioctl(mDeviceFd, 200, 0);
 	if(mDemuxFd > 0) {
 		close(mDemuxFd);
 	}

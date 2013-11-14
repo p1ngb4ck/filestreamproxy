@@ -69,7 +69,7 @@ Server: stream_enigma2\r\n\
 			wc = write(1, buffer, rc);
 #ifdef DEBUG_LOG
 			if(wc != rc) {
-				LOG("write fail.. rc[%d], wc[%d]", rc, wc);
+				LOG("need retry write.. rc[%d], wc[%d]", rc, wc);
 			}
 #endif
 		} else if (pollevt.revents & POLLHUP) {
