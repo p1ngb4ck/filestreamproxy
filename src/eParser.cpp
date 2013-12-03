@@ -212,7 +212,20 @@ bool eParser::LiveStreamPid(std::string aData, std::vector<unsigned long>& aPidL
 					}
 				}
 				break;
+#ifdef NORMAL_STREAMPROXY
+			case 2: {
+				const char *c = "\
+HTTP/1.0 200 OK\r\n\
+Connection: close\r\n\
+Content-Type: video/mpeg\r\n\
+Server: stream_enigma2\r\n\
+\r\n";
+				wc = write(1, c, strlen(c));
+				state = 3;
+			}
+#else
 			case 2:
+#endif
 			case 3:
 				if(line.length() > 0 && line.at(0) == '+') {
 					/*+0:0:pat,17d4:pmt,17de:video,17e8:audio,17e9:audio,17eb:audio,17ea:audio,17f3:subtitle,17de:pcr,17f2:text*/

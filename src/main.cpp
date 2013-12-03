@@ -15,18 +15,18 @@
 #include <sys/ioctl.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include <dirent.h>
 
 #include <vector>
 #include <string>
 #include <iterator>
-#include <fstream>
+
+#include "uStringTool.h"
 
 #include "ePreDefine.h"
 #include "eParser.h"
 #include "eUpstreamSocket.h"
 #include "eTransCodingDevice.h"
-#include "uStringTool.h"
+#include "eHostInfoMgr.h"
 
 #include "eFilePumpThread.h"
 #include "eDemuxPumpThread.h"
@@ -48,7 +48,6 @@ eNetworkPumpThread* hNetworkPumpThread = 0;
 eTransCodingDevice* hTranscodingDevice = 0;
 
 void SigHandler(int aSigNo);
-std::vector<int> FindPid(std::string aProcName, int aMyPid);
 //-------------------------------------------------------------------------------
 
 /*
@@ -71,13 +70,20 @@ int main(int argc, char** argv)
 	fpLog = fopen("/tmp/transtreamproxy.log", "a+");
 #endif
 
-	std::vector<int> pidlist = FindPid(argv[0], getpid());
-	for(int i = 0; i < pidlist.size(); ++i) {
+	std::string ipaddr = eHostInfoMgr::GetHostAddr();
 #ifdef DEBUG_LOG
-		LOG("send sigint to %d", pidlist[i]);
+	LOG("client info : %s, device count : %d", ipaddr.c_str(), eTransCodingDevice::GetMaxDeviceCount());
 #endif
-		kill(pidlist[i], SIGINT);
+	eHostInfoMgr hostmgr("tsp", eTransCodingDevice::GetMaxDeviceCount());
+	if (hostmgr.Init() == false) {
+		return 1;
 	}
+	if (hostmgr.IsExist(ipaddr) > 0) {
+		hostmgr.Update(ipaddr, getpid());
+	} else {
+		hostmgr.Register(ipaddr, getpid());
+	}
+
 	signal(SIGINT, SigHandler);
 
 	if (!ReadRequest(request)) {
@@ -238,13 +244,14 @@ int main(int argc, char** argv)
 		filepump.Start();
 		hFilePumpThread = &filepump;
 
+		sleep(1);
+		filepump.SeekOffset(0);
 		if(transcoding.StartTranscoding() == false) {
 #ifdef DEBUG_LOG
 			LOG("Transcoding start failed.");
 #endif
 			return 1;//RETURN_ERR_502("Transcoding start failed.");
 		}
-		filepump.SeekOffset(0);
 
 		networkpump.Start();
 		networkpump.Join();
@@ -266,47 +273,21 @@ char* ReadRequest(char* aRequest)
 
 void SigHandler(int aSigNo)
 {
+#ifdef DEBUG_LOG
+	LOG("%d", aSigNo);
+#endif
 	switch(aSigNo) {
 	case SIGINT:
 #ifdef DEBUG_LOG
 		LOG("SIGINT detected.");
 #endif
+//		if(hDemuxPumpThread) {
+//			hDemuxPumpThread->Close();
+//		}
+//		if(hTranscodingDevice) {
+//			hTranscodingDevice->close();
+//		}
 		exit(0);
 	}
 }
 //-------------------------------------------------------------------------------
-
-std::vector<int> FindPid(std::string aProcName, int aMyPid)
-{
-	std::vector<int> pidlist;
-	char cmdlinepath[256] = {0};
-	DIR* d = opendir("/proc");
-	if (d != 0) {
-		struct dirent* de;
-		while ((de = readdir(d)) != 0) {
-			int pid = atoi(de->d_name);
-			if (pid > 0) {
-				sprintf(cmdlinepath, "/proc/%s/cmdline", de->d_name);
-
-				std::string cmdline;
-				std::ifstream cmdlinefile(cmdlinepath);
-				std::getline(cmdlinefile, cmdline);
-				if (!cmdline.empty()) {
-					size_t pos = cmdline.find('\0');
-					if (pos != string::npos)
-					cmdline = cmdline.substr(0, pos);
-					pos = cmdline.rfind('/');
-					if (pos != string::npos)
-					cmdline = cmdline.substr(pos + 1);
-					if ((aProcName == cmdline) && (aMyPid != pid)) {
-						pidlist.push_back(pid);
-					}
-				}
-			}
-		}
-		closedir(d);
-	}
-	return pidlist;
-}
-//-------------------------------------------------------------------------------
-

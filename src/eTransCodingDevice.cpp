@@ -6,8 +6,10 @@
  */
 
 #include <stdio.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <string.h>
 #include <sys/ioctl.h>
 
 #include "ePreDefine.h"
@@ -25,6 +27,28 @@
 #define IOCTL_OPCODE_START_TRANSCODING 100
 #define IOCTL_OPCODE_STOP_TRANSCODING  200
 
+static int gMaxDeviceCount = 0;
+//-------------------------------------------------------------------------------
+
+int eTransCodingDevice::GetMaxDeviceCount()
+{
+	if(gMaxDeviceCount == 0) {
+		char cmdlinepath[256] = {0};
+		DIR* d = opendir("/dev");
+		if (d != 0) {
+			struct dirent* de;
+			while ((de = readdir(d)) != 0) {
+				if (strncmp("bcm_enc", de->d_name, 7) == 0) {
+					gMaxDeviceCount++;
+				}
+			}
+			closedir(d);
+		}
+	}
+	return gMaxDeviceCount;
+}
+//-------------------------------------------------------------------------------
+
 eTransCodingDevice::eTransCodingDevice()
 	: mDeviceFd(0)
 {
@@ -39,7 +63,14 @@ eTransCodingDevice::~eTransCodingDevice()
 
 bool eTransCodingDevice::Open()
 {
-	mDeviceFd = open("/dev/bcm_enc0", O_RDWR);
+	char path[16] = {0};
+	int maxcnt = eTransCodingDevice::GetMaxDeviceCount();
+	for (int i = 0; i < maxcnt; ++i) {
+		sprintf(path, "/dev/bcm_enc%d", i);
+		mDeviceFd = open(path, O_RDWR);
+		if(mDeviceFd > 0) break;
+	}
+	//mDeviceFd = open("/dev/bcm_enc0", O_RDWR);
 	if(mDeviceFd <= 0) {
 		mDeviceFd = 0;
 #ifdef DEBUG_LOG
@@ -48,7 +79,7 @@ bool eTransCodingDevice::Open()
 		return false;
 	}
 #ifdef DEBUG_LOG
-	LOG("transcoding device open ok.");
+	LOG("transcoding device open ok. [%s]", path);
 #endif
 	return true;
 }

@@ -45,7 +45,7 @@ namespace uStringTool
 		return out;
 	}
 
-	inline int Split(std::string data, const char delimiter, std::vector<string>& tokens)
+	inline int Split(std::string data, const char delimiter, std::vector<std::string>& tokens)
 	{
 			std::stringstream data_stream(data);
 			for(std::string token; std::getline(data_stream, token, delimiter); tokens.push_back(Trim(token)));

@@ -8,7 +8,7 @@
 
 include .config
 
-VER = v2.0
+VER = v2.1
 REV = $(shell cat .revision)
 BIN = transtreamproxy
 
@@ -22,12 +22,14 @@ SRC = \
 	eFilePumpThread.cpp \
 	eNetworkPumpThread.cpp \
 	eDemuxPumpThread.cpp \
+	eHostInfoMgr.cpp \
 
 
 CFLAGS ?=
 LDFLAGS ?=
 
 #CFLAGS += -DNORMAL_STREAMPROXY
+CFLAGS += -Wno-unused-result
 
 ifeq ($(SILENT_BUILD_MODE),y)
 Q=@
@@ -55,7 +57,7 @@ STRIP= $(CROSS)strip
 RM= rm -f
 
 CFLAGS += -I$(BUILD_TOP)/usr/include
-LDFLAGS += -L$(BUILD_TOP)/usr/lib -lpthread
+LDFLAGS += -L$(BUILD_TOP)/usr/lib -lpthread -lrt
 
 OBJ=$(SRC:.cpp=.o)
 
@@ -85,6 +87,9 @@ install:
 
 erase:clean
 	$(Q)$(RM) .revision
+
+autotools:
+	@cd ../ && aclocal && autoreconf && automake && ./configure && make clean all && make clean
 
 .showinfo:
 	@echo "-----------------------------------------------------"

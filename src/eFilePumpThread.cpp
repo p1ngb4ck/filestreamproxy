@@ -83,7 +83,7 @@ void eFilePumpThread::Run()
 			wc = write(mDeviceFd, buffer, rc);
 			if(wc != rc) {
 #ifdef DEBUG_LOG
-				LOG("write fail.. rc[%d], wc[%d]", rc, wc);
+				LOG("need rewrite.. rc[%d], wc[%d]", rc, wc);
 #endif
 				int read_len = rc;
 				fd_set device_writefds;
@@ -95,10 +95,16 @@ void eFilePumpThread::Run()
 					if (select(mDeviceFd + 1, 0, &device_writefds, 0, 0) < 0)
 						break;
 					wc = write(mDeviceFd, buffer + i, read_len - i);
+#ifdef DEBUG_LOG
+					LOG("-> retry write.. rc[%d], wc[%d]", read_len - i, wc);
+#endif
 				}
 			}
 		}
 	}
+#ifdef DEBUG_LOG
+	LOG("file pump stoped.", rc);
+#endif
 	Close();
 	mTermFlag = false;
 }

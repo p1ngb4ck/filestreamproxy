@@ -57,15 +57,6 @@ void eDemuxPumpThread::Run()
 	pollevt.events  = POLLOUT;
 
 	fd_set demux_readfds;
-#ifdef NORMAL_STREAMPROXY
-	const char *c = "\
-HTTP/1.0 200 OK\r\n\
-Connection: close\r\n\
-Content-Type: video/mpeg\r\n\
-Server: stream_enigma2\r\n\
-\r\n";
-	wc = write(1, c, strlen(c));
-#endif
 
 	mTermFlag = true;
 #ifdef DEBUG_LOG
@@ -95,7 +86,7 @@ Server: stream_enigma2\r\n\
 #endif
 			if(wc != rc) {
 #ifdef DEBUG_LOG
-				LOG("need retry write.. rc[%d], wc[%d]", rc, wc);
+				LOG("need rewrite.. rc[%d], wc[%d]", rc, wc);
 #endif
 				int read_len = rc;
 				fd_set device_writefds;

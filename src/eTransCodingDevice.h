@@ -26,6 +26,8 @@ public:
 
 	bool StartTranscoding();
 	void StopTranscoding();
+
+	static int GetMaxDeviceCount();
 };
 //-------------------------------------------------------------------------------
 
