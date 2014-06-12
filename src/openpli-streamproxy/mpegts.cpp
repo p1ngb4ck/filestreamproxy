@@ -29,7 +29,7 @@ MpegTS::MpegTS(string filename, bool request_time_seek_in) throw(trap)
 	:	private_fd(true),
 		request_time_seek(request_time_seek_in)
 {
-	if((fd = open(filename.c_str(), O_RDONLY, 0)) < 0)
+	if((fd = open(filename.c_str(), O_RDONLY | O_LARGEFILE, 0)) < 0)
 		throw(trap("MpegTS::MpegTS: cannot open file"));
 
 	init();

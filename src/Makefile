@@ -24,7 +24,7 @@ LDFLAGS ?=
 
 #CFLAGS += -Wno-unused-result
 
-CFLAGS += -O2
+CFLAGS += -O2 -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 
 CXX=$(CROSS)g++
 LD=$(CROSS)ld
