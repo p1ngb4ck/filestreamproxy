@@ -1,0 +1,23 @@
+/*
+ * Source.h
+ *
+ *  Created on: 2014. 6. 12.
+ *      Author: oskwon
+ */
+
+#ifndef SOURCE_H_
+#define SOURCE_H_
+
+#include "trap.h"
+//----------------------------------------------------------------------
+
+class Source
+{
+public:
+	Source(){}
+	virtual ~Source(){}
+	virtual int get_fd() const throw() = 0;
+};
+//----------------------------------------------------------------------
+
+#endif /* SOURCE_H_ */
