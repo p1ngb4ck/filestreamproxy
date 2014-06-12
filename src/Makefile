@@ -41,7 +41,7 @@ OBJS=$(SRCS:.cpp=.o)
 
 .cpp.o: 
 	$(Q)echo "Compile... "$<
-	$(Q)$(CXX) $(CFLAGS) -c $< -o $(subst .cpp,.o,$<)
+	$(Q)$(CXX) -c $(CFLAGS) -o $@ $<
 
 all: .showinfo $(BIN)
 

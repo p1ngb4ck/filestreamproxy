@@ -8,8 +8,15 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <string.h>
+#include <dirent.h>
+#include <signal.h>
+#include <sys/wait.h>
+
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 #include <sstream>
+#include <fstream>
 
 #include "mpegts.h"
 
@@ -118,7 +125,6 @@ bool RequestHeader::parse_header(std::string header)
 		type = REQ_TYPE_TRANSCODING_FILE;
 		decoded_path = UriDecoder().decode(value.c_str());
 	}
-
 	DEBUG("info (%d) -> type : [%s], path : [%s], version : [%s]", infos.size(), method.c_str(), path.c_str(), version.c_str());
 
 	for (++iter; iter != lines.end(); ++iter) {
@@ -189,5 +195,60 @@ void Util::vlog(const char * format, ...) throw()
 	va_end(args);
 
 	WARNING("%s", vlog_buffer);
+}
+//----------------------------------------------------------------------
+
+std::string get_host_addr()
+{
+	std::stringstream ss;
+    struct sockaddr_in addr;
+    socklen_t addrlen = sizeof(addr);
+
+    getpeername(0, (struct sockaddr*)&addr, &addrlen);
+    ss << inet_ntoa(addr.sin_addr);
+
+    return ss.str();
+}
+//-------------------------------------------------------------------------------
+
+std::vector<int> find_process_by_name(std::string name, int mypid)
+{
+	std::vector<int> pidlist;
+	char cmdlinepath[256] = {0};
+	DIR* d = opendir("/proc");
+	if (d != 0) {
+		struct dirent* de;
+		while ((de = readdir(d)) != 0) {
+			int pid = atoi(de->d_name);
+			if (pid > 0) {
+				sprintf(cmdlinepath, "/proc/%s/cmdline", de->d_name);
+
+				std::string cmdline;
+				std::ifstream cmdlinefile(cmdlinepath);
+				std::getline(cmdlinefile, cmdline);
+				if (!cmdline.empty()) {
+					size_t pos = cmdline.find('\0');
+					if (pos != string::npos)
+					cmdline = cmdline.substr(0, pos);
+					pos = cmdline.rfind('/');
+					if (pos != string::npos)
+					cmdline = cmdline.substr(pos + 1);
+					if ((name == cmdline) && ((mypid != pid) || (mypid == 0))) {
+						pidlist.push_back(pid);
+					}
+				}
+			}
+		}
+		closedir(d);
+	}
+	return pidlist;
+}
+//-------------------------------------------------------------------------------
+
+void kill_process(int pid)
+{
+	int result = kill(pid, SIGINT);
+	DEBUG("SEND SIGINT to %d, result : %d", pid, result);
+	sleep(1);
 }
 //----------------------------------------------------------------------

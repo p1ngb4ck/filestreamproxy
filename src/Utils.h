@@ -32,7 +32,7 @@ typedef enum {
 	REQ_TYPE_LIVE,
 	REQ_TYPE_TRANSCODING_LIVE,
 	REQ_TYPE_FILE,
-	REQ_TYPE_TRANSCODING_FILE,
+	REQ_TYPE_TRANSCODING_FILE
 } RequestType;
 //----------------------------------------------------------------------
 
@@ -74,6 +74,11 @@ class Util
 public:
 	static void	vlog(const char * format, ...) throw();
 };
+//----------------------------------------------------------------------
+
+void kill_process(int pid);
+std::string get_host_addr();
+std::vector<int> find_process_by_name(std::string name, int mypid);
 //----------------------------------------------------------------------
 
 #endif /* UTILS_H_ */

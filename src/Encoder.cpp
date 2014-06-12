@@ -7,6 +7,8 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 
@@ -17,10 +19,59 @@
 using namespace std;
 //----------------------------------------------------------------------
 
-Encoder::Encoder()
+Encoder::Encoder() throw(trap)
 {
-	fd = -1;
-	state = ENCODER_STAT_INIT;
+	encoder_id = fd = -1;
+	max_encodr_count = state = ENCODER_STAT_INIT;
+
+	DIR* d = opendir("/dev");
+	if (d != 0) {
+		struct dirent* de;
+		while ((de = readdir(d)) != 0) {
+			if (strncmp("bcm_enc", de->d_name, 7) == 0) {
+				max_encodr_count++;
+			}
+		}
+		closedir(d);
+	}
+
+	mSemId = 0;
+	mShmFd = 0;
+	mShmData = 0;
+
+	mSemName = "/tsp_session_sem";
+	mShmName = "/tsp_session_shm";
+	mShmSize = sizeof(Session) * max_encodr_count;
+
+	if (Open() == false)
+		throw(trap("session ctrl init fail."));
+	DEBUG("shm-info : fd [%d], name [%s], size [%d], data [%p]", mShmFd, mShmName.c_str(), mShmSize, mShmData);
+	DEBUG("sem-info : id [%p], name [%s]", mSemId, mSemName.c_str());
+
+	std::vector<int> pidlist = find_process_by_name("transtreamproxy", 0);
+
+	session_dump("before init.");
+
+	Wait();
+	for (int i = 0; i < max_encodr_count; i++) {
+		if (mShmData[i].pid != 0) {
+			int pid = mShmData[i].pid;
+			if(session_terminated(pidlist, pid)) {
+				session_erase(pid);
+			}
+		}
+	}
+	Post();
+
+	int mypid = getpid();
+	std::string ipaddr = get_host_addr();
+	if (session_already_exist(ipaddr) > 0) {
+		encoder_id = session_update(ipaddr, mypid);
+	}
+	else {
+		encoder_id = session_register(ipaddr, mypid);
+	}
+	DEBUG("encoder_device_id : %d", encoder_id);
 }
 //----------------------------------------------------------------------
 
@@ -37,7 +88,7 @@ Encoder::~Encoder()
 }
 //----------------------------------------------------------------------
 
-bool Encoder::open(int encoder_id)
+bool Encoder::encoder_open()
 {
 	std::string path = "/dev/bcm_enc" + ultostr(encoder_id);
 	fd = ::open(path.c_str(), O_RDWR, 0);
@@ -49,10 +100,10 @@ bool Encoder::open(int encoder_id)
 }
 //----------------------------------------------------------------------
 
-bool Encoder::retry_open(int encoder_id, int retry_count, int sleep_time)
+bool Encoder::retry_open(int retry_count, int sleep_time)
 {
 	for (int i = 0; i < retry_count; ++i) {
-		if (open(encoder_id)) {
+		if (encoder_open()) {
 			DEBUG("encoder-%d open success..", encoder_id);
 			return true;
 		}
@@ -61,6 +112,7 @@ bool Encoder::retry_open(int encoder_id, int retry_count, int sleep_time)
 	}
 	return false;
 }
+//----------------------------------------------------------------------
 
 bool Encoder::ioctl(int cmd, int value)
 {
@@ -81,5 +133,112 @@ bool Encoder::ioctl(int cmd, int value)
 int Encoder::get_fd()
 {
 	return fd;
+}
+//----------------------------------------------------------------------
+
+void Encoder::session_dump(const char* aMessage)
+{
+	DUMMY(" >> %s", aMessage);
+	DUMMY("-------- [ DUMP HOST INFO ] ---------");
+	for (int i = 0; i < max_encodr_count; i++) {
+		DUMMY("%d : ip [%s], pid [%d]", i,  mShmData[i].ip, mShmData[i].pid);
+	}
+	DUMMY("-------------------------------------");
+}
+//----------------------------------------------------------------------
+
+bool Encoder::session_terminated(std::vector<int>& aList, int aPid)
+{
+	for (int i = 0; i < aList.size(); ++i) {
+		if (aList[i] == aPid) {
+			return false;
+		}
+	}
+	return true;
+}
+//----------------------------------------------------------------------
+
+int Encoder::session_register(std::string aIpAddr, int aPid)
+{
+	int i = 0;
+	bool result = false;
+
+	Wait();
+	for (; i < max_encodr_count; i++) {
+		if (mShmData[i].pid == 0) {
+			result = true;
+			mShmData[i].pid = aPid;
+			strcpy(mShmData[i].ip, aIpAddr.c_str());
+			break;
+		}
+	}
+	Post();
+	session_dump("after register.");
+
+	return result ? i : -1;
+}
+//----------------------------------------------------------------------
+
+void Encoder::session_unregister(std::string aIpAddr)
+{
+	Wait();
+	for (int i = 0; i < max_encodr_count; i++) {
+		if (strcmp(mShmData[i].ip, aIpAddr.c_str()) == 0) {
+			memset(mShmData[i].ip, 0, 16);
+			mShmData[i].pid = 0;
+			break;
+		}
+	}
+	Post();
+	session_dump("after unregister.");
+}
+//----------------------------------------------------------------------
+
+void Encoder::session_erase(int aPid)
+{
+	for (int i = 0; i < max_encodr_count; i++) {
+		if (mShmData[i].pid == aPid) {
+			DEBUG("erase.. %s : %d", mShmData[i].ip, mShmData[i].pid);
+			memset(mShmData[i].ip, 0, 16);
+			mShmData[i].pid = 0;
+			break;
+		}
+	}
+}
+//----------------------------------------------------------------------
+
+int Encoder::session_update(std::string aIpAddr, int aPid)
+{
+	int i = 0;
+	bool result = false;
+
+	session_dump("before update.");
+	Wait();
+	for (; i < max_encodr_count; i++) {
+		if (strcmp(mShmData[i].ip, aIpAddr.c_str()) == 0) {
+			result = true;
+			kill_process(mShmData[i].pid);
+			memset(mShmData[i].ip, 0, 16);
+			mShmData[i].pid = 0;
+			break;
+		}
+	}
+	Post();
+	session_register(aIpAddr, aPid);
+	return result ? i : -1;
+}
+//----------------------------------------------------------------------
+
+int Encoder::session_already_exist(std::string aIpAddr)
+{
+	int existCount = 0;
+	Wait();
+	for (int i = 0; i < max_encodr_count; i++) {
+		if (strcmp(mShmData[i].ip, aIpAddr.c_str()) == 0) {
+			existCount++;
+		}
+	}
+	Post();
+	return existCount;
 }
 //----------------------------------------------------------------------

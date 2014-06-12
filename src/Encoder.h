@@ -8,7 +8,20 @@
 #ifndef ENCODER_H_
 #define ENCODER_H_
 
-class Encoder
+#include <string>
+
+#include "trap.h"
+
+#include "SharedMemory.h"
+//----------------------------------------------------------------------
+
+typedef struct _session_t {
+	int pid;
+	char ip[16];
+} Session;
+//----------------------------------------------------------------------
+
+class Encoder : public SharedMemory<Session>
 {
 private:
 	int fd;
@@ -30,16 +43,30 @@ public:
 	};
 
 	int state;
+	int encoder_id;
+	int max_encodr_count;
+
 protected:
-	bool open(int encoder_id);
+	void session_dump(const char* aMessage);
+
+	void session_erase(int aPid);
+	int  session_register(std::string aIpAddr, int aPid);
+	void session_unregister(std::string aIpAddr);
+
+	int  session_update(std::string aIpAddr, int aPid);
+	bool session_terminated(std::vector<int>& aList, int aPid);
+	int  session_already_exist(std::string aIpAddr);
+
+protected:
+	bool encoder_open();
 
 public:
-	Encoder();
+	Encoder() throw(trap);
 	virtual ~Encoder();
 
 	int  get_fd();
 	bool ioctl(int cmd, int value);
-	bool retry_open(int encoder_id, int retry_count, int sleep_time);
+	bool retry_open(int retry_count, int sleep_time);
 };
 //----------------------------------------------------------------------
 

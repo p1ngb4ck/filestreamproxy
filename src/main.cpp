@@ -238,7 +238,7 @@ int main(int argc, char **argv)
 		}
 		thread_params.source = source;
 
-		if (!encoder.retry_open(0, 2, 3)) {
+		if (!encoder.retry_open(2, 3)) {
 			exit(-1);
 		}
 
@@ -328,5 +328,7 @@ void signal_handler(int sig_no)
 {
 	INFO("signal no : %d", sig_no);
 	do_exit("signal detected..");
+	usleep(500000);
+	exit(0);
 }
 //----------------------------------------------------------------------
