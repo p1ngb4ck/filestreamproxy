@@ -18,7 +18,7 @@
 #include "Encoder.h"
 //----------------------------------------------------------------------
 
-int strtoi(std::string data);
+int strtollu(std::string data);
 std::string ultostr(int64_t data);
 std::string trim(std::string& s, const std::string& drop = " \t\n\v\r");
 int split(std::string data, const char delimiter, std::vector<std::string>& tokens);

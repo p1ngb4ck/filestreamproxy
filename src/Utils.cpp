@@ -35,9 +35,9 @@ std::string ultostr(int64_t data)
 }
 //----------------------------------------------------------------------
 
-int strtoi(std::string data)
+int strtollu(std::string data)
 {
-	int	retval;
+	long long retval;
 	std::stringstream ss;
 	try {
 		ss.str(data);
@@ -161,14 +161,25 @@ off_t make_response(ThreadParams *params, std::string& response)
 			if((range.length() > 7) && (range.substr(0, 6) == "bytes=")) {
 				range = range.substr(6);
 				if(range.find('-') == (range.length() - 1)) {
-					byte_offset = strtoi(range);
+					byte_offset = strtollu(range);
 				}
 			}
 
-			response += (byte_offset > 0) ? HTTP_PARTIAL : HTTP_OK;
+			off_t content_length = source->stream_length - byte_offset;
+			if (byte_offset > 0) {
+				content_length += 1;
+				response += HTTP_PARTIAL;
+			}
+			else {
+				response += HTTP_OK;
+			}
 			response += HTTP_PARAMS;
 			response += "Accept-Ranges: bytes\r\n"
-					    "Content-Length: " + ultostr(source->stream_length) + "\r\n";
+					    "Content-Length: " + ultostr(content_length) + "\r\n";
+			response += string("Content-Range: bytes ") +
+					ultostr(byte_offset) + "-" +
+					ultostr(source->stream_length - 1) + "/" +
+					ultostr(source->stream_length) + "\r\n";
 			response += HTTP_DONE;
 		}
 		break;

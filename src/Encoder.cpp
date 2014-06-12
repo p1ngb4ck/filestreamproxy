@@ -7,9 +7,11 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <dirent.h>
 #include <string.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/ioctl.h>
 
 #include "Utils.h"
@@ -110,6 +112,7 @@ bool Encoder::retry_open(int retry_count, int sleep_time)
 		WARNING("encoder%d open fail, retry count : %d/%d", encoder_id, i, retry_count);
 		sleep(sleep_time);
 	}
+	ERROR("encoder open fail : %s (%d)", strerror(errno), errno);
 	return false;
 }
 //----------------------------------------------------------------------

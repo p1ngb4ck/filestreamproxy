@@ -30,9 +30,7 @@ using namespace std;
 #define RESPONSE_FD  (1)
 #define BUFFFER_SIZE (188 * 256)
 
-void signal_setting();
 void signal_handler(int sig_no);
-
 void do_exit(const char *message);
 
 static bool is_terminated = true;
@@ -79,7 +77,7 @@ void *streaming_thread_main(void *params)
 							retry_wc = write(RESPONSE_FD, (buffer + rc - remain_len), remain_len);
 							wc += retry_wc;
 						}
-						DEBUG("re-write result : %d - %d", wc, rc);
+						LOG("re-write result : %d - %d", wc, rc);
 					}
 				}
 			}
@@ -160,7 +158,7 @@ void *source_thread_main(void *params)
 									wc += retry_wc;
 								}
 							}
-							DEBUG("re-write result : %d - %d", wc, rc);
+							LOG("re-write result : %d - %d", wc, rc);
 							usleep(500000);
 						}
 					}
@@ -187,7 +185,7 @@ int main(int argc, char **argv)
 	else {
 		Logger::instance()->init("/tmp/transtreamproxy", Logger::WARNING, false, "3.0");
 	}
-	signal_setting();
+	signal(SIGINT, signal_handler);
 
 	RequestHeader header;
 
@@ -254,8 +252,9 @@ int main(int argc, char **argv)
 			DEBUG("response data :\n%s", response.c_str());
 
 			if (header.type == REQ_TYPE_TRANSCODING_FILE) {
+				DEBUG("seek to %llu", byte_offset);
 				((MpegTS*)source)->seek_absolute(byte_offset);
-				DEBUG("seek to %ld", byte_offset);
+				DEBUG("seek ok");
 			}
 
 			if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
@@ -310,25 +309,9 @@ void do_exit(const char *message)
 }
 //----------------------------------------------------------------------
 
-void signal_setting()
-{
-	signal(SIGHUP, signal_handler);
-	signal(SIGINT, signal_handler);
-	signal(SIGQUIT, signal_handler);
-	signal(SIGILL, signal_handler);
-	signal(SIGABRT, signal_handler);
-	signal(SIGKILL, signal_handler);
-	signal(SIGBUS, signal_handler);
-	signal(SIGSEGV, signal_handler);
-	signal(SIGTERM, signal_handler);
-}
-//----------------------------------------------------------------------
-
 void signal_handler(int sig_no)
 {
 	INFO("signal no : %d", sig_no);
 	do_exit("signal detected..");
-	usleep(500000);
-	exit(0);
 }
 //----------------------------------------------------------------------
