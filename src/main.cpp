@@ -68,6 +68,7 @@ void *streaming_thread_main(void *params)
 				}
 				else if (rc > 0) {
 					wc = write(RESPONSE_FD, buffer, rc);
+					//DEBUG("write : %d", wc);
 					if (wc < rc) {
 						//DEBUG("need rewrite.. remain (%d)", rc - wc);
 						int retry_wc = 0;
@@ -145,7 +146,7 @@ void *source_thread_main(void *params)
 					}
 					else if (rc > 0) {
 						wc = write(encoder->get_fd(), buffer, rc);
-
+						//DEBUG("write : %d", wc);
 						if (wc < rc) {
 							//DEBUG("need rewrite.. remain (%d)", rc - wc);
 							int retry_wc = 0;
@@ -198,7 +199,6 @@ int main(int argc, char **argv)
 	if (header.parse_header(req)) {
 		Encoder encoder;
 		Source *source = 0;
-
 		ThreadParams thread_params = { 0, &encoder, &header };
 
 		int video_pid = 0, audio_pid = 0, pmt_pid = 0;
@@ -206,7 +206,7 @@ int main(int argc, char **argv)
 		switch(header.type) {
 		case REQ_TYPE_TRANSCODING_FILE:
 			try {
-				MpegTS *ts = new MpegTS(header.decoded_path, false);
+				MpegTS *ts = new MpegTS(header.extension["file"], true);
 				pmt_pid   = ts->pmt_pid;
 				video_pid = ts->video_pid;
 				audio_pid = ts->audio_pid;
@@ -252,9 +252,25 @@ int main(int argc, char **argv)
 			DEBUG("response data :\n%s", response.c_str());
 
 			if (header.type == REQ_TYPE_TRANSCODING_FILE) {
-				DEBUG("seek to %llu", byte_offset);
-				((MpegTS*)source)->seek_absolute(byte_offset);
-				DEBUG("seek ok");
+				try {
+					std::string position = header.extension["position"];
+					if (position == "") {
+						DEBUG("seek to byte_offset %llu", byte_offset);
+						((MpegTS*)source)->seek_absolute(byte_offset);
+						DEBUG("seek ok");
+					}
+					else {
+						unsigned int position_offset = strtollu(position);
+						if(((MpegTS*)source)->is_time_seekable && (position_offset > 0)) {
+							DEBUG("seek to position_offset %ds", position_offset);
+							((MpegTS*)source)->seek_time((position_offset * 1000) + ((MpegTS*)source)->first_pcr_ms);
+							DEBUG("seek ok");
+						}
+					}
+				}
+				catch (const trap &e) {
+					WARNING("Exception : %s", e.what());
+				}
 			}
 
 			if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {

@@ -110,20 +110,33 @@ bool RequestHeader::parse_header(std::string header)
 	method  = infos[0];
 	path    = infos[1];
 	version = infos[2];
-	decoded_path = path;
 
 	if (strncmp(path.c_str(), "/file", 5) == 0) {
-		std::string key = "", value = "";
-		if (!split_key_value(path, "=", key, value)) {
-			ERROR("fail to parse path(file) : %s", path.c_str());
-			return false;
-		}
-		if (key != "/file?file") {
-			ERROR("unknown request file path (key : %s, value : %s)", key.c_str(), value.c_str());
-			return false;
+		std::vector<std::string> tokens;
+		if (split(path.substr(6), '&', tokens) > 0) {
+			for (int i = 0; i < tokens.size(); ++i) {
+				std::string data = tokens[i];
+				std::string key = "", value = "";
+				if (!split_key_value(data, "=", key, value)) {
+					ERROR("fail to request : %s", data.c_str());
+					continue;
+				}
+				if (key == "file") {
+					extension[key] = UriDecoder().decode(value.c_str());;
+					continue;
+				}
+				extension[key] = value;
+			}
 		}
 		type = REQ_TYPE_TRANSCODING_FILE;
-		decoded_path = UriDecoder().decode(value.c_str());
+
+//		DEBUG(":: HEADER :: %s", extension["file"].c_str());
+//		std::map<std::string, std::string>::iterator iter = extension.begin();
+//		for (; iter != extension.end(); ++iter) {
+//			std::string key = iter->first;
+//			std::string value = iter->second;
+//			DEBUG("[%s] -> [%s]", key.c_str(), value.c_str());
+//		}
 	}
 	DEBUG("info (%d) -> type : [%s], path : [%s], version : [%s]", infos.size(), method.c_str(), path.c_str(), version.c_str());
 

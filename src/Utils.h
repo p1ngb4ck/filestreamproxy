@@ -42,9 +42,9 @@ public:
 	RequestType type;
 	std::string method;
 	std::string path;
-	std::string decoded_path;
 	std::string version;
 	std::map<std::string, std::string> params;
+	std::map<std::string, std::string> extension;
 
 public:
 	bool parse_header(std::string header);
