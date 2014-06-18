@@ -3,7 +3,7 @@
 
 #include "mpegts.h"
 //#include "util.h" // oskwon
-#include "Utils.h" // oskwon
+#include "Util.h" // oskwon
 
 #include <unistd.h>
 #include <stddef.h>
@@ -29,6 +29,7 @@ MpegTS::MpegTS(string filename, bool request_time_seek_in) throw(trap)
 	:	private_fd(true),
 		request_time_seek(request_time_seek_in)
 {
+	// oskwon : add option O_LARGEFILE.
 	if((fd = open(filename.c_str(), O_RDONLY | O_LARGEFILE, 0)) < 0)
 		throw(trap("MpegTS::MpegTS: cannot open file"));
 

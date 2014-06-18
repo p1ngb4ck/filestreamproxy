@@ -31,7 +31,7 @@ LD=$(CROSS)ld
 STRIP=$(CROSS)strip
 RM=rm -f
 
-CFLAGS += -I. -I./openpli-streamproxy -I$(SYSROOT)/usr/include 
+CFLAGS += -I. -I./external -I$(SYSROOT)/usr/include 
 LDFLAGS += -L$(SYSROOT)/usr/lib -lpthread -lrt
 
 OBJS=$(SRCS:.cpp=.o)

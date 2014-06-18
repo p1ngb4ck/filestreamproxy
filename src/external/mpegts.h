@@ -3,7 +3,6 @@
 
 //#include "config.h" // oskwon
 #include "trap.h"
-#include "Source.h" // oskwon
 
 #include <map>
 #include <string>
@@ -11,7 +10,8 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-class MpegTS : public Source // oskwon
+#include "Source.h"          // oskwon
+class MpegTS : public Source // oskwon : inherit Source class.
 {
 	private:
 
