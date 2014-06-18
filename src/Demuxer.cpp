@@ -15,7 +15,7 @@
 #include <linux/dvb/dmx.h>
 #include <linux/dvb/version.h>
 
-#include "Utils.h"
+#include "Util.h"
 #include "Logger.h"
 #include "Demuxer.h"
 
@@ -149,11 +149,11 @@ bool Demuxer::parse_webif_response(std::string& response, std::vector<unsigned l
 	demux_id = atoi(line.substr(1,1).c_str());
 
 	std::vector<std::string> pidtokens;
-	if (split(line.c_str() + 3, ',', pidtokens)) {
+	if (Util::split(line.c_str() + 3, ',', pidtokens)) {
 		for (int i = 0; i < pidtokens.size(); ++i) {
 			std::string pidstr, pidtype;
 			std::string toekn = pidtokens[i];
-			if (!split_key_value(toekn, ":", pidstr, pidtype))
+			if (!Util::split_key_value(toekn, ":", pidstr, pidtype))
 				continue;
 
 			unsigned long pid = strtoul(pidstr.c_str(), 0, 0x10);
@@ -183,7 +183,7 @@ bool Demuxer::parse_webif_response(std::string& response, std::vector<unsigned l
 }
 //-------------------------------------------------------------------------------
 
-Demuxer::Demuxer(RequestHeader *header) throw(trap)
+Demuxer::Demuxer(HttpHeader *header) throw(trap)
 {
 	demux_id = pat_pid = fd = sock = -1;
 	pmt_pid = audio_pid = video_pid = 0;
@@ -197,7 +197,7 @@ Demuxer::Demuxer(RequestHeader *header) throw(trap)
 	if (!parse_webif_response(webif_response, new_pids))
 		throw(trap("webif response parsing fail."));
 
-	std::string demuxpath = "/dev/dvb/adapter0/demux" + ultostr(demux_id);
+	std::string demuxpath = "/dev/dvb/adapter0/demux" + Util::ultostr(demux_id);
 	if ((fd = open(demuxpath.c_str(), O_RDWR | O_NONBLOCK)) < 0) {
 		throw(trap(std::string("demux open fail : ") + demuxpath));
 	}

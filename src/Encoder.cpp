@@ -14,7 +14,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 
-#include "Utils.h"
+#include "Util.h"
 #include "Logger.h"
 #include "Encoder.h"
 
@@ -50,7 +50,7 @@ Encoder::Encoder() throw(trap)
 	DEBUG("shm-info : fd [%d], name [%s], size [%d], data [%p]", mShmFd, mShmName.c_str(), mShmSize, mShmData);
 	DEBUG("sem-info : id [%p], name [%s]", mSemId, mSemName.c_str());
 
-	std::vector<int> pidlist = find_process_by_name("transtreamproxy", 0);
+	std::vector<int> pidlist = Util::find_process_by_name("transtreamproxy", 0);
 
 	session_dump("before init.");
 
@@ -66,7 +66,7 @@ Encoder::Encoder() throw(trap)
 	Post();
 
 	int mypid = getpid();
-	std::string ipaddr = get_host_addr();
+	std::string ipaddr = Util::host_addr();
 	if (session_already_exist(ipaddr) > 0) {
 		encoder_id = session_update(ipaddr, mypid);
 	}
@@ -92,7 +92,7 @@ Encoder::~Encoder()
 
 bool Encoder::encoder_open()
 {
-	std::string path = "/dev/bcm_enc" + ultostr(encoder_id);
+	std::string path = "/dev/bcm_enc" + Util::ultostr(encoder_id);
 	fd = ::open(path.c_str(), O_RDWR, 0);
 	if (fd >= 0) {
 		state = ENCODER_STAT_OPENED;
@@ -141,12 +141,14 @@ int Encoder::get_fd()
 
 void Encoder::session_dump(const char* aMessage)
 {
-	DUMMY(" >> %s", aMessage);
-	DUMMY("-------- [ DUMP HOST INFO ] ---------");
-	for (int i = 0; i < max_encodr_count; i++) {
-		DUMMY("%d : ip [%s], pid [%d]", i,  mShmData[i].ip, mShmData[i].pid);
+	if (Logger::instance()->get_level() >= Logger::INFO) {
+		DUMMY(" >> %s", aMessage);
+		DUMMY("-------- [ DUMP HOST INFO ] ---------");
+		for (int i = 0; i < max_encodr_count; i++) {
+			DUMMY("%d : ip [%s], pid [%d]", i,  mShmData[i].ip, mShmData[i].pid);
+		}
+		DUMMY("-------------------------------------");
 	}
-	DUMMY("-------------------------------------");
 }
 //----------------------------------------------------------------------
 
@@ -220,7 +222,7 @@ int Encoder::session_update(std::string aIpAddr, int aPid)
 	for (; i < max_encodr_count; i++) {
 		if (strcmp(mShmData[i].ip, aIpAddr.c_str()) == 0) {
 			result = true;
-			kill_process(mShmData[i].pid);
+			Util::kill_process(mShmData[i].pid);
 			memset(mShmData[i].ip, 0, 16);
 			mShmData[i].pid = 0;
 			break;

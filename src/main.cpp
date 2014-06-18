@@ -15,25 +15,163 @@
 
 #include <string>
 
-#include "trap.h"
-#include "mpegts.h"
-
-#include "Utils.h"
+#include "Util.h"
 #include "Logger.h"
+
+#include "Http.h"
+#include "Mpeg.h"
 
 #include "Demuxer.h"
 #include "Encoder.h"
+#include "UriDecoder.h"
 
 using namespace std;
 //----------------------------------------------------------------------
 
-#define RESPONSE_FD  (1)
 #define BUFFFER_SIZE (188 * 256)
+
+void show_help();
 
 void signal_handler(int sig_no);
 void do_exit(const char *message);
 
+void *source_thread_main(void *params);
+void *streaming_thread_main(void *params);
+
+int streaming_write(const char *buffer, size_t buffer_len, bool enable_log = false);
+//----------------------------------------------------------------------
+
 static bool is_terminated = true;
+//----------------------------------------------------------------------
+
+int main(int argc, char **argv)
+{
+	if (argc > 1) {
+		if (strcmp(argv[1], "-h") == 0)
+			show_help();
+		exit(0);
+	}
+	Logger::instance()->init("/tmp/transtreamproxy", Logger::WARNING);
+
+	signal(SIGINT, signal_handler);
+
+	HttpHeader header;
+
+	int source_thread_id, stream_thread_id;
+	pthread_t source_thread_handle, stream_thread_handle;
+
+	std::string req = HttpHeader::read_request();
+
+	DEBUG("request head :\n%s", req.c_str());
+	if (header.parse_request(req)) {
+		Encoder encoder;
+		Source *source = 0;
+		ThreadParams thread_params = { 0, &encoder, &header };
+
+		int video_pid = 0, audio_pid = 0, pmt_pid = 0;
+
+		switch(header.type) {
+		case HttpHeader::TRANSCODING_FILE:
+			try {
+				std::string uri = UriDecoder().decode(header.page_params["file"].c_str());
+				Mpeg *ts = new Mpeg(uri, true);
+				pmt_pid   = ts->pmt_pid;
+				video_pid = ts->video_pid;
+				audio_pid = ts->audio_pid;
+				source = ts;
+			}
+			catch (const trap &e) {
+				ERROR("fail to create source : %s", e.what());
+				exit(-1);
+			}
+			break;
+		case HttpHeader::TRANSCODING_LIVE:
+			try {
+				Demuxer *dmx = new Demuxer(&header);
+				pmt_pid   = dmx->pmt_pid;
+				video_pid = dmx->video_pid;
+				audio_pid = dmx->audio_pid;
+				source = dmx;
+			}
+			catch (const trap &e) {
+				ERROR("fail to create source : %s", e.what());
+				exit(-1);
+			}
+			break;
+		case HttpHeader::M3U:
+			try {
+				std::string response = header.build_response((Mpeg*) source);
+				if (response != "") {
+					streaming_write(response.c_str(), response.length(), true);
+				}
+			}
+			catch (...) {
+			}
+			exit(0);
+		default:
+			ERROR("not support source type (type : %d)", header.type);
+			exit(-1);
+		}
+		thread_params.source = source;
+
+		if (!encoder.retry_open(2, 3)) {
+			exit(-1);
+		}
+
+		if (encoder.state == Encoder::ENCODER_STAT_OPENED) {
+			std::string response = header.build_response((Mpeg*) source);
+			if (response == "") {
+				do_exit(0);
+				return 0;
+			}
+
+			streaming_write(response.c_str(), response.length(), true);
+
+			if (header.type == HttpHeader::TRANSCODING_FILE) {
+				((Mpeg*) source)->seek(header);
+			}
+
+			if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
+				do_exit("fail to set video pid.");
+				exit(-1);
+			}
+			if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
+				do_exit("fail to set audio pid.");
+				exit(-1);
+			}
+			if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
+				do_exit("fail to set pmtid.");
+				exit(-1);
+			}
+		}
+
+		is_terminated = false;
+		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, (void *)&thread_params);
+		if (source_thread_id < 0) {
+			do_exit("fail to create source thread.");
+		}
+		else {
+			pthread_detach(source_thread_handle);
+			sleep(1);
+			if (!encoder.ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
+				do_exit("fail to start transcoding.");
+			}
+			else {
+				stream_thread_id = pthread_create(&stream_thread_handle, 0, streaming_thread_main, (void *)&thread_params);
+				if (stream_thread_id < 0) {
+					do_exit("fail to create stream thread.");
+				}
+			}
+		}
+		pthread_join(stream_thread_handle, 0);
+
+		if (source != 0) {
+			delete source;
+			source = 0;
+		}
+	}
+	return 0;
+}
 //----------------------------------------------------------------------
 
 void *streaming_thread_main(void *params)
@@ -42,7 +180,7 @@ void *streaming_thread_main(void *params)
 
 	INFO("streaming thread start.");
 	Encoder *encoder = ((ThreadParams*) params)->encoder;
-	RequestHeader *header = ((ThreadParams*) params)->request;
+	HttpHeader *header = ((ThreadParams*) params)->request;
 
 	try {
 		int poll_state, rc, wc;
@@ -67,15 +205,14 @@ void *streaming_thread_main(void *params)
 					break;
 				}
 				else if (rc > 0) {
-					wc = write(RESPONSE_FD, buffer, rc);
-					//DEBUG("write : %d", wc);
+					wc = streaming_write((const char*) buffer, rc);
 					if (wc < rc) {
 						//DEBUG("need rewrite.. remain (%d)", rc - wc);
 						int retry_wc = 0;
 						for (int remain_len = rc - wc; rc != wc; remain_len -= retry_wc) {
 							poll_fd[0].revents = 0;
 
-							retry_wc = write(RESPONSE_FD, (buffer + rc - remain_len), remain_len);
+							retry_wc = streaming_write((const char*) (buffer + rc - remain_len), remain_len);
 							wc += retry_wc;
 						}
 						LOG("re-write result : %d - %d", wc, rc);
@@ -113,7 +250,7 @@ void *source_thread_main(void *params)
 {
 	Source *source = ((ThreadParams*) params)->source;
 	Encoder *encoder = ((ThreadParams*) params)->encoder;
-	RequestHeader *header = ((ThreadParams*) params)->request;
+	HttpHeader *header = ((ThreadParams*) params)->request;
 
 	INFO("source thread start.");
 
@@ -178,141 +315,12 @@ void *source_thread_main(void *params)
 }
 //----------------------------------------------------------------------
 
-int main(int argc, char **argv)
+int streaming_write(const char *buffer, size_t buffer_len, bool enable_log)
 {
-	if (access("/tmp/.debug_on", F_OK) == 0) {
-		Logger::instance()->init("/tmp/transtreamproxy", Logger::DEBUG, false, "3.0");
+	if (enable_log) {
+		DEBUG("response data :\n%s", buffer);
 	}
-	else {
-		Logger::instance()->init("/tmp/transtreamproxy", Logger::WARNING, false, "3.0");
-	}
-	signal(SIGINT, signal_handler);
-
-	RequestHeader header;
-
-	int source_thread_id, stream_thread_id;
-	pthread_t source_thread_handle, stream_thread_handle;
-
-	std::string req = read_request();
-
-	DEBUG("request head :\n%s", req.c_str());
-	if (header.parse_header(req)) {
-		Encoder encoder;
-		Source *source = 0;
-		ThreadParams thread_params = { 0, &encoder, &header };
-
-		int video_pid = 0, audio_pid = 0, pmt_pid = 0;
-
-		switch(header.type) {
-		case REQ_TYPE_TRANSCODING_FILE:
-			try {
-				MpegTS *ts = new MpegTS(header.extension["file"], true);
-				pmt_pid   = ts->pmt_pid;
-				video_pid = ts->video_pid;
-				audio_pid = ts->audio_pid;
-				source = ts;
-			}
-			catch (const trap &e) {
-				ERROR("fail to create source : %s", e.what());
-				exit(-1);
-			}
-			break;
-		case REQ_TYPE_TRANSCODING_LIVE:
-			try {
-				Demuxer *dmx = new Demuxer(&header);
-				pmt_pid   = dmx->pmt_pid;
-				video_pid = dmx->video_pid;
-				audio_pid = dmx->audio_pid;
-				source = dmx;
-			}
-			catch (const trap &e) {
-				ERROR("fail to create source : %s", e.what());
-				exit(-1);
-			}
-			break;
-		default:
-			ERROR("not support source type (type : %d)", header.type);
-			exit(-1);
-		}
-		thread_params.source = source;
-
-		if (!encoder.retry_open(2, 3)) {
-			exit(-1);
-		}
-
-		if (encoder.state == Encoder::ENCODER_STAT_OPENED) {
-			std::string response;
-			off_t byte_offset = 0;
-			if ((byte_offset = make_response((ThreadParams*) &thread_params, response)) < 0) {
-				do_exit(0);
-				return 0;
-			}
-
-			write(RESPONSE_FD, response.c_str(), response.length());
-			DEBUG("response data :\n%s", response.c_str());
-
-			if (header.type == REQ_TYPE_TRANSCODING_FILE) {
-				try {
-					std::string position = header.extension["position"];
-					if (position == "") {
-						DEBUG("seek to byte_offset %llu", byte_offset);
-						((MpegTS*)source)->seek_absolute(byte_offset);
-						DEBUG("seek ok");
-					}
-					else {
-						unsigned int position_offset = strtollu(position);
-						if(((MpegTS*)source)->is_time_seekable && (position_offset > 0)) {
-							DEBUG("seek to position_offset %ds", position_offset);
-							((MpegTS*)source)->seek_time((position_offset * 1000) + ((MpegTS*)source)->first_pcr_ms);
-							DEBUG("seek ok");
-						}
-					}
-				}
-				catch (const trap &e) {
-					WARNING("Exception : %s", e.what());
-				}
-			}
-
-			if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
-				do_exit("fail to set video pid.");
-				exit(-1);
-			}
-			if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
-				do_exit("fail to set audio pid.");
-				exit(-1);
-			}
-			if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
-				do_exit("fail to set pmtid.");
-				exit(-1);
-			}
-		}
-
-		is_terminated = false;
-		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, (void *)&thread_params);
-		if (source_thread_id < 0) {
-			do_exit("fail to create source thread.");
-		}
-		else {
-			pthread_detach(source_thread_handle);
-			sleep(1);
-			if (!encoder.ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
-				do_exit("fail to start transcoding.");
-			}
-			else {
-				stream_thread_id = pthread_create(&stream_thread_handle, 0, streaming_thread_main, (void *)&thread_params);
-				if (stream_thread_id < 0) {
-					do_exit("fail to create stream thread.");
-				}
-			}
-		}
-		pthread_join(stream_thread_handle, 0);
-
-		if (source != 0) {
-			delete source;
-			source = 0;
-		}
-	}
-	return 0;
+	return write(1, buffer, buffer_len);
 }
 //----------------------------------------------------------------------
 
@@ -329,5 +337,16 @@ void signal_handler(int sig_no)
 {
 	INFO("signal no : %d", sig_no);
 	do_exit("signal detected..");
+}
+//----------------------------------------------------------------------
+
+void show_help()
+{
+	printf("usage : transtreamproxy [-h]\n");
+	printf("\n");
+	printf(" * To active debug mode, input NUMBER on /tmp/debug_on file. (default : warning)\n");
+	printf("   NUMBER : error(1), warning(2), info(3), debug(4), log(5)\n");
+	printf("\n");
+	printf(" ex > echo \"4\" > /tmp/debug_on\n");
 }
 //----------------------------------------------------------------------

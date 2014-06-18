@@ -11,6 +11,7 @@
 #include <sys/types.h>
 
 #include "Logger.h"
+//----------------------------------------------------------------------
 
 #define USE_COLOR_LOG 1
 
@@ -80,9 +81,25 @@ Logger* Logger::instance()
 }
 //----------------------------------------------------------------------
 
-bool Logger::init(const char* aName, int aLogLevel, bool aWithTimestamp, const char* aVersion)
+bool Logger::init(const char* aName, int aLogLevel, bool aWithTimestamp)
 {
-	mLogLevel = aLogLevel;
+	if (access("/tmp/.debug_on", F_OK) == 0) {
+		FILE *fp = fopen("/tmp/.debug_on", "r");
+
+		int lv = 0;
+		fscanf(fp, "%d", &lv);
+		if (Logger::NONE < lv && lv <= Logger::LOG) {
+			mLogLevel = lv;
+		}
+		else {
+			mLogLevel = aLogLevel;
+		}
+		fclose(fp);
+	}
+	else {
+		mLogLevel = aLogLevel;
+	}
+
 	if (aName == NULL) {
 		mLogHandle = stdout;
 		INFO("logger initialized.");
@@ -97,7 +114,14 @@ bool Logger::init(const char* aName, int aLogLevel, bool aWithTimestamp, const c
 		printf("fail to open logger [%s].", path);
 		return false;
 	}
-	DUMMY("Logger initialized. (Ver %s)", aVersion);
+
+	if (mLogLevel >= Logger::INFO) {
+#if defined(_MAJOR) && defined(_MINOR)
+		DUMMY("Logger initialized. (Ver %d.%d)", _MAJOR, _MINOR);
+#else
+		DUMMY("Logger initialized.");
+#endif
+	}
 	return true;
 }
 //----------------------------------------------------------------------

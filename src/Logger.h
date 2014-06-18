@@ -53,7 +53,9 @@ private:
 	static void logger_release()
 	{
 		if (mInstHandle) {
-			DUMMY("Logger Released.");
+			if (Logger::instance()->get_level() >= Logger::INFO) {
+				DUMMY("Logger Released.");
+			}
 			delete mInstHandle;
 		}
 	};
@@ -62,7 +64,7 @@ public:
 	enum { NONE = 0, ERROR, WARNING, INFO, DEBUG, LOG };
 
 #ifndef _DISABLE_LOGGER
-	bool init(const char* aFileName = 0, int aLogLevel = Logger::ERROR, bool aWithTimestamp = true, const char* aVersion = 0);
+	bool init(const char* aFileName = 0, int aLogLevel = Logger::ERROR, bool aWithTimestamp = false);
 
 	void log(const char* aFormat, ...);
 	void log(int aLogLevel, const char* aFormat, ...);

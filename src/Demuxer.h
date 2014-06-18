@@ -13,7 +13,8 @@
 
 #include "trap.h"
 
-#include "Utils.h"
+#include "Util.h"
+#include "Http.h"
 #include "Source.h"
 //----------------------------------------------------------------------
 
@@ -39,7 +40,7 @@ protected:
 	bool parse_webif_response(std::string& response, std::vector<unsigned long> &new_pids);
 
 public:
-	Demuxer(RequestHeader *header) throw(trap);
+	Demuxer(HttpHeader *header) throw(trap);
 	virtual ~Demuxer() throw();
 	int get_fd() const throw();
 };

@@ -1,4 +1,6 @@
-*.o
-transtreamproxy
 .cproject
 .project
+config.mk
+config.mk.bak
+*.o
+transtreamproxy
