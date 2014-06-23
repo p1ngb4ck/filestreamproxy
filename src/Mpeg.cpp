@@ -73,7 +73,7 @@ void Mpeg::seek(HttpHeader &header)
 		else {
 			off_t position_offset;
 			if (!relative.empty()) {
-				int dur = duration();
+				int dur = calc_length();
 				DEBUG("duration : %d", dur);
 				position_offset = (dur * Util::strtollu(relative)) / 100;
 			}
@@ -97,7 +97,7 @@ void Mpeg::seek(HttpHeader &header)
 }
 //----------------------------------------------------------------------
 
-off_t Mpeg::lseek(off_t offset, int whence)
+off_t Mpeg::seek_internal(off_t offset, int whence)
 {
 	if (m_nrfiles < 2)
 		return ::lseek(get_fd(), offset, whence);
@@ -114,10 +114,10 @@ off_t Mpeg::lseek(off_t offset, int whence)
 }
 //----------------------------------------------------------------------
 
-ssize_t Mpeg::read(off_t offset, void *buf, size_t count)
+ssize_t Mpeg::read_internal(off_t offset, void *buf, size_t count)
 {
 	if (offset != m_current_offset) {
-		m_current_offset = this->lseek(offset, SEEK_SET);
+		m_current_offset = seek_internal(offset, SEEK_SET);
 		if (m_current_offset < 0) {
 			return m_current_offset;
 		}
@@ -176,7 +176,7 @@ void Mpeg::calc_begin()
 
 void Mpeg::calc_end()
 {
-	off_t end = this->lseek(0, SEEK_END);
+	off_t end = seek_internal(0, SEEK_END);
 
 	if (llabs(end - m_last_filelength) > 1*1024*1024) {
 		m_last_filelength = end;
@@ -240,7 +240,7 @@ void Mpeg::take_samples()
 	m_samples_taken = 1;
 	m_samples.clear();
 	int retries=2;
-	pts_t dummy = duration();
+	pts_t dummy = calc_length();
 
 	if (dummy <= 0)
 		return;
@@ -412,7 +412,7 @@ int Mpeg::get_pts(off_t &offset, pts_t &pts, int fixed)
 
 	while (left >= 188) {
 		unsigned char packet[188];
-		if (this->read(offset, packet, 188) != 188) {
+		if (read_internal(offset, packet, 188) != 188) {
 			//break;
 			return -1;
 		}
@@ -534,7 +534,7 @@ int Mpeg::get_pts(off_t &offset, pts_t &pts, int fixed)
 }
 //----------------------------------------------------------------------
 
-int Mpeg::duration()
+int Mpeg::calc_length()
 {
 	calc_begin(); calc_end();
 	if (!(m_begin_valid && m_end_valid))

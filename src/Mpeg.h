@@ -29,30 +29,30 @@ private:
 
 	int m_begin_valid, m_end_valid, m_futile;
 
-	std::map<pts_t, off_t> m_samples;
 	int m_samples_taken;
+	std::map<pts_t, off_t> m_samples;
 
 	void scan();
 	int switch_offset(off_t off);
 
 	void calc_end();
 	void calc_begin();
+	int  calc_length();
+	int  calc_bitrate();
 
 	int fix_pts(const off_t &offset, pts_t &now);
 	int get_pts(off_t &offset, pts_t &pts, int fixed);
-
-	int duration();
-	off_t lseek(off_t offset, int whence);
-	ssize_t read(off_t offset, void *buf, size_t count);
-
 	int get_offset(off_t &offset, pts_t &pts, int marg);
-	int take_sample(off_t off, pts_t &p);
-	void take_samples();
 
-	int calc_bitrate();
+	void take_samples();
+	int  take_sample(off_t off, pts_t &p);
+
+	off_t seek_internal(off_t offset, int whence);
+	ssize_t read_internal(off_t offset, void *buf, size_t count);
+
 public:
-	Mpeg(std::string file, bool request_time_seek) throw (trap)
-		: MpegTS(file, request_time_seek)
+	Mpeg(std::string filename, bool request_time_seek) throw (trap)
+		: MpegTS(filename, request_time_seek)
 	{
 		m_current_offset = m_base_offset = m_last_offset = 0;
 		m_splitsize = m_nrfiles = m_current_file = m_totallength = 0;
