@@ -32,6 +32,8 @@ private:
 	int m_samples_taken;
 	std::map<pts_t, off_t> m_samples;
 
+	int m_duration;
+
 	void scan();
 	int switch_offset(off_t off);
 
@@ -60,7 +62,7 @@ public:
 		m_pts_begin = m_pts_end = m_offset_begin = m_offset_end = 0;
 		m_last_filelength = m_begin_valid = m_end_valid = m_futile =0;
 
-		m_samples_taken = 0;
+		m_duration = m_samples_taken = 0;
 	}
 
 	virtual ~Mpeg() throw () {}

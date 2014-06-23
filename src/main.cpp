@@ -155,7 +155,6 @@ int main(int argc, char **argv)
 		}
 		else {
 			pthread_detach(source_thread_handle);
-			sleep(1);
 			if (!encoder.ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
 				is_terminated = true;
 				throw(http_trap("start transcoding fail.", 503, "Service Unavailable"));

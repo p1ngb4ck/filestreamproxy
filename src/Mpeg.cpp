@@ -13,48 +13,6 @@
 
 void Mpeg::seek(HttpHeader &header)
 {
-#ifdef USE_EXTERNAL_SEEK_TIME
-	try {
-		std::string position = header.page_params["position"];
-		std::string relative = header.page_params["relative"];
-
-		if (position.empty() && relative.empty()) {
-			off_t byte_offset = 0;
-			std::string range = header.params["Range"];
-			if((range.length() > 7) && (range.substr(0, 6) == "bytes=")) {
-				range = range.substr(6);
-				if(range.find('-') == (range.length() - 1)) {
-					byte_offset = Util::strtollu(range);
-				}
-			}
-			if (is_time_seekable && byte_offset > 0) {
-				DEBUG("seek to byte_offset %llu", byte_offset);
-				seek_absolute(byte_offset);
-				DEBUG("seek ok");
-			}
-		}
-		else {
-			unsigned int position_offset;
-			if (!relative.empty()) {
-				int dur = duration();
-				DEBUG("duration : %d", dur);
-				position_offset = (dur * Util::strtollu(relative)) / 100;
-			}
-			else {
-				position_offset = Util::strtollu(position);
-			}
-
-			if (is_time_seekable && position_offset > 0) {
-				DEBUG("seek to position_offset %ds", position_offset);
-				seek_time((position_offset * 1000) + first_pcr_ms);
-				DEBUG("seek ok");
-			}
-		}
-	}
-	catch (const trap &e) {
-		WARNING("Exception : %s", e.what());
-	}
-#else
 	try {
 		off_t byte_offset = 0;
 		std::string position = header.page_params["position"];
@@ -93,7 +51,6 @@ void Mpeg::seek(HttpHeader &header)
 	catch (...) {
 		WARNING("seek fail.");
 	}
-#endif
 }
 //----------------------------------------------------------------------
 
@@ -299,39 +256,38 @@ int Mpeg::take_sample(off_t off, pts_t &p)
 
 int Mpeg::calc_bitrate()
 {
-	calc_begin(); calc_end();
-	if (!(m_begin_valid && m_end_valid))
+	calc_length();
+	if (!m_begin_valid || !m_end_valid) {
 		return -1;
+	}
 
 	pts_t len_in_pts = m_pts_end - m_pts_begin;
 
 	/* wrap around? */
-	if (len_in_pts < 0)
+	if (len_in_pts < 0) {
 		len_in_pts += 0x200000000LL;
+	}
 	off_t len_in_bytes = m_offset_end - m_offset_begin;
-
-	if (!len_in_pts)
-		return -1;
+	if (!len_in_pts) return -1;
 
 	unsigned long long bitrate = len_in_bytes * 90000 * 8 / len_in_pts;
-	if ((bitrate < 10000) || (bitrate > 100000000))
+	if ((bitrate < 10000) || (bitrate > 100000000)) {
 		return -1;
-
+	}
 	return bitrate;
 }
 //----------------------------------------------------------------------
 
 int Mpeg::get_offset(off_t &offset, pts_t &pts, int marg)
 {
-	calc_begin(); calc_end();
-
-	if (!m_begin_valid)
+	calc_length();
+	if (!m_begin_valid || !m_end_valid) {
 		return -1;
-	if (!m_end_valid)
-		return -1;
+	}
 
-	if (!m_samples_taken)
+	if (!m_samples_taken) {
 		take_samples();
+	}
 
 	if (!m_samples.empty()) {
 		int maxtries = 5;
@@ -536,15 +492,19 @@ int Mpeg::get_pts(off_t &offset, pts_t &pts, int fixed)
 
 int Mpeg::calc_length()
 {
-	calc_begin(); calc_end();
-	if (!(m_begin_valid && m_end_valid))
-		return -1;
-	pts_t len = m_pts_end - m_pts_begin;
+	if (m_duration <= 0) {
+		calc_begin(); calc_end();
+		if (!(m_begin_valid && m_end_valid))
+			return -1;
+		pts_t len = m_pts_end - m_pts_begin;
 
-	if (len < 0)
-		len += 0x200000000LL;
+		if (len < 0)
+			len += 0x200000000LL;
 
-	len = len / 90000;
-	return int(len);
+		len = len / 90000;
+
+		m_duration = int(len);
+	}
+	return m_duration;
 }
 //----------------------------------------------------------------------
