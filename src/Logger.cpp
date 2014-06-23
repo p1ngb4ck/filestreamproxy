@@ -111,7 +111,7 @@ bool Logger::init(const char* aName, int aLogLevel, bool aWithTimestamp)
 	else sprintf(path, "%s.log", aName);
 	if (!(mLogHandle = fopen(path, "a+"))) {
 		mLogHandle = 0;
-		printf("fail to open logger [%s].", path);
+//		printf("fail to open logger [%s].", path);
 		return false;
 	}
 

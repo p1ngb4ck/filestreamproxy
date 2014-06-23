@@ -40,6 +40,8 @@ int streaming_write(const char *buffer, size_t buffer_len, bool enable_log = fal
 //----------------------------------------------------------------------
 
 static bool is_terminated = true;
+static int source_thread_id, stream_thread_id;
+static pthread_t source_thread_handle, stream_thread_handle;
 //----------------------------------------------------------------------
 
 int main(int argc, char **argv)
@@ -54,10 +56,6 @@ int main(int argc, char **argv)
 	signal(SIGINT, signal_handler);
 
 	HttpHeader header;
-
-	int source_thread_id, stream_thread_id;
-	pthread_t source_thread_handle, stream_thread_handle;
-
 	std::string req = HttpHeader::read_request();
 
 	DEBUG("request head :\n%s", req.c_str());
@@ -85,7 +83,7 @@ int main(int argc, char **argv)
 		case HttpHeader::TRANSCODING_FILE:
 			try {
 				std::string uri = UriDecoder().decode(header.page_params["file"].c_str());
-				Mpeg *ts = new Mpeg(uri, true);
+				Mpeg *ts = new Mpeg(uri, false);
 				pmt_pid   = ts->pmt_pid;
 				video_pid = ts->video_pid;
 				audio_pid = ts->audio_pid;

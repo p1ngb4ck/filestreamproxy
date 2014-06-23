@@ -29,6 +29,9 @@ private:
 
 	int m_begin_valid, m_end_valid, m_futile;
 
+	std::map<pts_t, off_t> m_samples;
+	int m_samples_taken;
+
 	void scan();
 	int switch_offset(off_t off);
 
@@ -42,6 +45,11 @@ private:
 	off_t lseek(off_t offset, int whence);
 	ssize_t read(off_t offset, void *buf, size_t count);
 
+	int get_offset(off_t &offset, pts_t &pts, int marg);
+	int take_sample(off_t off, pts_t &p);
+	void take_samples();
+
+	int calc_bitrate();
 public:
 	Mpeg(std::string file, bool request_time_seek) throw (trap)
 		: MpegTS(file, request_time_seek)
@@ -51,6 +59,8 @@ public:
 
 		m_pts_begin = m_pts_end = m_offset_begin = m_offset_end = 0;
 		m_last_filelength = m_begin_valid = m_end_valid = m_futile =0;
+
+		m_samples_taken = 0;
 	}
 
 	virtual ~Mpeg() throw () {}

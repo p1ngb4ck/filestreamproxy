@@ -13,6 +13,7 @@
 
 void Mpeg::seek(HttpHeader &header)
 {
+#ifdef USE_EXTERNAL_SEEK_TIME
 	try {
 		std::string position = header.page_params["position"];
 		std::string relative = header.page_params["relative"];
@@ -42,6 +43,7 @@ void Mpeg::seek(HttpHeader &header)
 			else {
 				position_offset = Util::strtollu(position);
 			}
+
 			if (is_time_seekable && position_offset > 0) {
 				DEBUG("seek to position_offset %ds", position_offset);
 				seek_time((position_offset * 1000) + first_pcr_ms);
@@ -52,6 +54,46 @@ void Mpeg::seek(HttpHeader &header)
 	catch (const trap &e) {
 		WARNING("Exception : %s", e.what());
 	}
+#else
+	try {
+		off_t byte_offset = 0;
+		std::string position = header.page_params["position"];
+		std::string relative = header.page_params["relative"];
+		if (position.empty() && relative.empty()) {
+			std::string range = header.params["Range"];
+			DEBUG("Range : %s", range.c_str());
+			if((range.length() > 7) && (range.substr(0, 6) == "bytes=")) {
+				range = range.substr(6);
+				if(range.find('-') == (range.length() - 1)) {
+					byte_offset = Util::strtollu(range);
+					DEBUG("Range To : %s -> %llu", range.c_str(), byte_offset);
+				}
+			}
+		}
+		else {
+			off_t position_offset;
+			if (!relative.empty()) {
+				int dur = duration();
+				DEBUG("duration : %d", dur);
+				position_offset = (dur * Util::strtollu(relative)) / 100;
+			}
+			else {
+				position_offset = Util::strtollu(position);
+			}
+			position_offset *= 90000;
+			get_offset(byte_offset, position_offset, -1);
+		}
+
+		DEBUG("seek to byte_offset %llu", byte_offset);
+		if (byte_offset > 0) {
+			seek_absolute(byte_offset);
+			DEBUG("seek ok");
+		}
+	}
+	catch (...) {
+		WARNING("seek fail.");
+	}
+#endif
 }
 //----------------------------------------------------------------------
 
@@ -103,12 +145,14 @@ int Mpeg::switch_offset(off_t off)
 		int filenr = off / m_splitsize;
 		if (filenr >= m_nrfiles)
 			filenr = m_nrfiles - 1;
-//		if (filenr != m_current_file) {
-//			close();
-//			m_fd = open(filenr);
-//			m_last_offset = m_base_offset = m_splitsize * filenr;
-//			m_current_file = filenr;
-//		}
+#if 0
+		if (filenr != m_current_file) {
+			close();
+			m_fd = open(filenr);
+			m_last_offset = m_base_offset = m_splitsize * filenr;
+			m_current_file = filenr;
+		}
+#endif
 	}
 	else m_base_offset = 0;
 
@@ -172,8 +216,6 @@ void Mpeg::calc_end()
 int Mpeg::fix_pts(const off_t &offset, pts_t &now)
 {
 	/* for the simple case, we assume one epoch, with up to one wrap around in the middle. */
-	printf("%s : %d\n", __FUNCTION__, __LINE__);
-
 	calc_begin();
 	if (!m_begin_valid) {
 		return -1;
@@ -188,6 +230,175 @@ int Mpeg::fix_pts(const off_t &offset, pts_t &now)
 	if (now < pos) /* wrap around */
 		now = now + 0x200000000LL - pos;
 	else now -= pos;
+
+	return 0;
+}
+//----------------------------------------------------------------------
+
+void Mpeg::take_samples()
+{
+	m_samples_taken = 1;
+	m_samples.clear();
+	int retries=2;
+	pts_t dummy = duration();
+
+	if (dummy <= 0)
+		return;
+
+	int nr_samples = 30;
+	off_t bytes_per_sample = (m_offset_end - m_offset_begin) / (long long)nr_samples;
+	if (bytes_per_sample < 40*1024*1024)
+		bytes_per_sample = 40*1024*1024;
+
+	bytes_per_sample -= bytes_per_sample % 188;
+
+	DEBUG("samples step %lld, pts begin %llx, pts end %llx, offs begin %lld, offs end %lld:",
+			bytes_per_sample, m_pts_begin, m_pts_end, m_offset_begin, m_offset_end);
+
+	for (off_t offset = m_offset_begin; offset < m_offset_end;) {
+		pts_t p;
+		if (take_sample(offset, p) && retries--)
+			continue;
+		retries = 2;
+		offset += bytes_per_sample;
+	}
+	m_samples[0] = m_offset_begin;
+	m_samples[m_pts_end - m_pts_begin] = m_offset_end;
+}
+//----------------------------------------------------------------------
+
+/* returns 0 when a sample was taken. */
+int Mpeg::take_sample(off_t off, pts_t &p)
+{
+	off_t offset_org = off;
+
+	if (!get_pts(off, p, 1)) {
+		/* as we are happily mixing PTS and PCR values (no comment, please), we might
+		   end up with some "negative" segments.
+		   so check if this new sample is between the previous and the next field*/
+		std::map<pts_t, off_t>::const_iterator l = m_samples.lower_bound(p);
+		std::map<pts_t, off_t>::const_iterator u = l;
+
+		if (l != m_samples.begin()) {
+			--l;
+			if (u != m_samples.end()) {
+				if ((l->second > off) || (u->second < off)) {
+					DEBUG("ignoring sample %lld %lld %lld (%llx %llx %llx)", l->second, off, u->second, l->first, p, u->first);
+					return 1;
+				}
+			}
+		}
+
+		DEBUG("adding sample %lld: pts 0x%llx -> pos %lld (diff %lld bytes)", offset_org, p, off, off-offset_org);
+		m_samples[p] = off;
+		return 0;
+	}
+	return -1;
+}
+//----------------------------------------------------------------------
+
+int Mpeg::calc_bitrate()
+{
+	calc_begin(); calc_end();
+	if (!(m_begin_valid && m_end_valid))
+		return -1;
+
+	pts_t len_in_pts = m_pts_end - m_pts_begin;
+
+	/* wrap around? */
+	if (len_in_pts < 0)
+		len_in_pts += 0x200000000LL;
+	off_t len_in_bytes = m_offset_end - m_offset_begin;
+
+	if (!len_in_pts)
+		return -1;
+
+	unsigned long long bitrate = len_in_bytes * 90000 * 8 / len_in_pts;
+	if ((bitrate < 10000) || (bitrate > 100000000))
+		return -1;
+
+	return bitrate;
+}
+//----------------------------------------------------------------------
+
+int Mpeg::get_offset(off_t &offset, pts_t &pts, int marg)
+{
+	calc_begin(); calc_end();
+
+	if (!m_begin_valid)
+		return -1;
+	if (!m_end_valid)
+		return -1;
+
+	if (!m_samples_taken)
+		take_samples();
+
+	if (!m_samples.empty()) {
+		int maxtries = 5;
+		pts_t p = -1;
+
+		while (maxtries--) {
+			/* search entry before and after */
+			std::map<pts_t, off_t>::const_iterator l = m_samples.lower_bound(pts);
+			std::map<pts_t, off_t>::const_iterator u = l;
+
+			if (l != m_samples.begin())
+				--l;
+
+			/* we could have seeked beyond the end */
+			if (u == m_samples.end()) {
+				/* use last segment for interpolation. */
+				if (l != m_samples.begin()) {
+					--u;
+					--l;
+				}
+			}
+
+			/* if we don't have enough points */
+			if (u == m_samples.end())
+				break;
+
+			pts_t pts_diff = u->first - l->first;
+			off_t offset_diff = u->second - l->second;
+
+			if (offset_diff < 0) {
+				DEBUG("something went wrong when taking samples.");
+				m_samples.clear();
+				take_samples();
+				continue;
+			}
+			DEBUG("using: %llx:%llx -> %llx:%llx", l->first, u->first, l->second, u->second);
+
+			int bitrate = (pts_diff) ? (offset_diff * 90000 * 8 / pts_diff) : 0;
+			offset = l->second;
+			offset += ((pts - l->first) * (pts_t)bitrate) / 8ULL / 90000ULL;
+			offset -= offset % 188;
+			p = pts;
+
+			if (!take_sample(offset, p)) {
+				int diff = (p - pts) / 90;
+				DEBUG("calculated diff %d ms", diff);
+
+				if (::abs(diff) > 300) {
+					DEBUG("diff to big, refining");
+					continue;
+				}
+			}
+			else DEBUG("no sample taken, refinement not possible.");
+			break;
+		}
+
+		if (p != -1) {
+			pts = p;
+			DEBUG("aborting. Taking %llx as offset for %lld", offset, pts);
+			return 0;
+		}
+	}
+
+	int bitrate = calc_bitrate();
+	offset = pts * (pts_t)bitrate / 8ULL / 90000ULL;
+	DEBUG("fallback, bitrate=%d, results in %016llx", bitrate, offset);
+	offset -= offset % 188;
 
 	return 0;
 }
