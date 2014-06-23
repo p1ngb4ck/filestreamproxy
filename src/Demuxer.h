@@ -34,13 +34,13 @@ private:
 	std::vector<unsigned long> pids;
 
 protected:
-	std::string webif_reauest(std::string service, std::string auth) throw(trap);
+	std::string webif_reauest(std::string request) throw(http_trap);
 	bool already_exist(std::vector<unsigned long> &pidlist, int pid);
 	void set_filter(std::vector<unsigned long> &new_pids) throw(trap);
 	bool parse_webif_response(std::string& response, std::vector<unsigned long> &new_pids);
 
 public:
-	Demuxer(HttpHeader *header) throw(trap);
+	Demuxer(HttpHeader *header) throw(http_trap);
 	virtual ~Demuxer() throw();
 	int get_fd() const throw();
 };

@@ -33,8 +33,7 @@ public:
 	std::string page;
 	std::map<std::string, std::string> page_params;
 
-private:
-
+	std::string authorization;
 public:
 	HttpHeader() : type(UNKNOWN) {}
 	virtual ~HttpHeader() {}
@@ -43,6 +42,11 @@ public:
 	std::string build_response(Mpeg *source);
 
 	static std::string read_request();
+};
+//----------------------------------------------------------------------
+
+namespace HttpUtil {
+	std::string http_error(int errcode, std::string errmsg);
 };
 //----------------------------------------------------------------------
 

@@ -22,7 +22,7 @@
 using namespace std;
 //-------------------------------------------------------------------------------
 
-std::string Demuxer::webif_reauest(std::string service, std::string auth) throw(trap)
+std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 {
 	if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0)
 		throw(trap("webif create socket fail."));
@@ -32,15 +32,10 @@ std::string Demuxer::webif_reauest(std::string service, std::string auth) throw(
 	sock_addr.sin_port = htons(80);
 	sock_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	if (connect(sock, (struct sockaddr*)&sock_addr, sizeof(struct sockaddr_in)))
-		throw(trap("webif connect fail."));
-
-	std::string request = string("GET /web/stream?StreamService=") + service + " HTTP/1.0\r\n";
-	if (auth != "")
-		request += "Authorization: " + auth + "\r\n";
-	request += "\r\n";
+		throw(http_trap("webif connect fail.", 502, "Bad Gateway, webif connect fail"));
 
 	if (write(sock, request.c_str(), request.length()) != request.length())
-		throw(trap("webif send(request) fail."));
+		throw(http_trap("webif request fail.", 502, "Bad Gateway, webif request error"));
 	DEBUG("webif request :\n", request.c_str());
 
 	std::string response = "";
@@ -56,7 +51,7 @@ std::string Demuxer::webif_reauest(std::string service, std::string auth) throw(
 			break;
 		else if (poll_state < 0) {
 			ERROR("webif receive poll error : %s (%d)", strerror(errno), errno);
-			throw(trap("webif receive response error."));
+			throw(http_trap("webif response fail.", 502, "Bad Gateway, webif response error"));
 		}
 		if (pollevt[0].revents & POLLIN) {
 			if (read(sock, buffer, 1024) <= 0) {
@@ -183,27 +178,47 @@ bool Demuxer::parse_webif_response(std::string& response, std::vector<unsigned l
 }
 //-------------------------------------------------------------------------------
 
-Demuxer::Demuxer(HttpHeader *header) throw(trap)
+Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 {
 	demux_id = pat_pid = fd = sock = -1;
 	pmt_pid = audio_pid = video_pid = 0;
 
-	std::string auth = header->params["WWW-Authenticate"];
-	std::string service = header->path.substr(1);
-	std::string webif_response = webif_reauest(service, auth);
+	std::string webif_request = string("GET /web/stream?StreamService=") + header->path.substr(1) + " HTTP/1.0\r\n";
+	if (header->params.find("Authorization") != header->params.end()) {
+		if (header->params["Authorization"].length() < 5) {
+			throw(http_trap("no authorization data.", 401, "Unauthorized"));
+		}
+		webif_request += "Authorization: " + header->params["Authorization"] + "\r\n";
+		if (header->params["Cookie"].length() > 0) {
+			webif_request += "Cookie: " + header->params["Cookie"] + "\r\n";
+		}
+	}
+	webif_request += "\r\n";
+
+	std::string webif_response = webif_reauest(webif_request);
 	DEBUG("webif response :\n%s", webif_response.c_str());
+
+	if (webif_response.find("WWW-Authenticate") != std::string::npos) {
+		header->authorization = webif_response;
+		throw(http_trap("webif whthentication fail.", 401, "Unauthorized"));
+	}
 
 	std::vector<unsigned long> new_pids;
 	if (!parse_webif_response(webif_response, new_pids))
-		throw(trap("webif response parsing fail."));
+		throw(http_trap("webif response parsing fail.", 503, "Service Unavailable"));
 
 	std::string demuxpath = "/dev/dvb/adapter0/demux" + Util::ultostr(demux_id);
 	if ((fd = open(demuxpath.c_str(), O_RDWR | O_NONBLOCK)) < 0) {
-		throw(trap(std::string("demux open fail : ") + demuxpath));
+		throw(http_trap(std::string("demux open fail : ") + demuxpath, 503, "Service Unavailable"));
 	}
 	INFO("demux open success : %s", demuxpath.c_str());
 
-	set_filter(new_pids);
+	try {
+		set_filter(new_pids);
+	}
+	catch (const trap &e) {
+		throw(http_trap(e.what(), 503, "Service Unavailable"));
+	}
 }
 //-------------------------------------------------------------------------------
 

@@ -172,3 +172,17 @@ std::string HttpHeader::read_request()
 	return request;
 }
 //----------------------------------------------------------------------
+
+std::string HttpUtil::http_error(int errcode, std::string errmsg)
+{
+	std::ostringstream oss;
+
+	oss << "HTTP/1.1 " << Util::ultostr(errcode) << " " << errmsg << "\r\n";
+	oss << "Content-Type: text/html\r\n";
+	oss << "Connection: close\r\n";
+	oss << "Accept-Ranges: bytes\r\n";
+	oss << "\r\n";
+
+	return oss.str();
+}
+//----------------------------------------------------------------------

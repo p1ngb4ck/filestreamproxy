@@ -31,9 +31,7 @@ using namespace std;
 #define BUFFFER_SIZE (188 * 256)
 
 void show_help();
-
 void signal_handler(int sig_no);
-void do_exit(const char *message);
 
 void *source_thread_main(void *params);
 void *streaming_thread_main(void *params);
@@ -63,7 +61,20 @@ int main(int argc, char **argv)
 	std::string req = HttpHeader::read_request();
 
 	DEBUG("request head :\n%s", req.c_str());
-	if (header.parse_request(req)) {
+
+	try {
+		if (req.find("\r\n\r\n") == std::string::npos) {
+			throw(http_trap("no found request done code.", 400, "Bad Request"));
+		}
+
+		if (header.parse_request(req) == false) {
+			throw(http_trap("request parse error.", 400, "Bad Request"));
+		}
+
+		if (header.method != "GET") {
+			throw(http_trap("not support request type.", 400, "Bad Request, not support request"));
+		}
+
 		Encoder encoder;
 		Source *source = 0;
 		ThreadParams thread_params = { 0, &encoder, &header };
@@ -81,8 +92,7 @@ int main(int argc, char **argv)
 				source = ts;
 			}
 			catch (const trap &e) {
-				ERROR("fail to create source : %s", e.what());
-				exit(-1);
+				throw(http_trap(e.what(), 404, "Not Found"));
 			}
 			break;
 		case HttpHeader::TRANSCODING_LIVE:
@@ -93,9 +103,8 @@ int main(int argc, char **argv)
 				audio_pid = dmx->audio_pid;
 				source = dmx;
 			}
-			catch (const trap &e) {
-				ERROR("fail to create source : %s", e.what());
-				exit(-1);
+			catch (const http_trap &e) {
+				throw(e);
 			}
 			break;
 		case HttpHeader::M3U:
@@ -109,20 +118,18 @@ int main(int argc, char **argv)
 			}
 			exit(0);
 		default:
-			ERROR("not support source type (type : %d)", header.type);
-			exit(-1);
+			throw(http_trap(std::string("not support source type : ") + Util::ultostr(header.type), 400, "Bad Request"));
 		}
 		thread_params.source = source;
 
 		if (!encoder.retry_open(2, 3)) {
-			exit(-1);
+			throw(http_trap("encoder open fail.", 503, "Service Unavailable"));
 		}
 
 		if (encoder.state == Encoder::ENCODER_STAT_OPENED) {
 			std::string response = header.build_response((Mpeg*) source);
 			if (response == "") {
-				do_exit(0);
-				return 0;
+				throw(http_trap("response build fail.", 503, "Service Unavailable"));
 			}
 
 			streaming_write(response.c_str(), response.length(), true);
@@ -132,43 +139,62 @@ int main(int argc, char **argv)
 			}
 
 			if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
-				do_exit("fail to set video pid.");
-				exit(-1);
+				throw(http_trap("video pid setting fail.", 503, "Service Unavailable"));
 			}
 			if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
-				do_exit("fail to set audio pid.");
-				exit(-1);
+				throw(http_trap("audio pid setting fail.", 503, "Service Unavailable"));
 			}
 			if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
-				do_exit("fail to set pmtid.");
-				exit(-1);
+				throw(http_trap("pmt pid setting fail.", 503, "Service Unavailable"));
 			}
 		}
 
 		is_terminated = false;
 		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, (void *)&thread_params);
 		if (source_thread_id < 0) {
-			do_exit("fail to create source thread.");
+			is_terminated = true;
+			throw(http_trap("souce thread create fail.", 503, "Service Unavailable"));
 		}
 		else {
 			pthread_detach(source_thread_handle);
 			sleep(1);
 			if (!encoder.ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
-				do_exit("fail to start transcoding.");
+				is_terminated = true;
+				throw(http_trap("start transcoding fail.", 503, "Service Unavailable"));
 			}
 			else {
 				stream_thread_id = pthread_create(&stream_thread_handle, 0, streaming_thread_main, (void *)&thread_params);
 				if (stream_thread_id < 0) {
-					do_exit("fail to create stream thread.");
+					is_terminated = true;
+					throw(http_trap("stream thread create fail.", 503, "Service Unavailable"));
 				}
 			}
 		}
 		pthread_join(stream_thread_handle, 0);
+		is_terminated = true;
 
 		if (source != 0) {
 			delete source;
 			source = 0;
 		}
+	}
+	catch (const http_trap &e) {
+		ERROR("%s", e.message.c_str());
+		std::string error = "";
+		if (e.http_error == 401 && header.authorization.length() > 0) {
+			error = header.authorization;
+		}
+		else {
+			error = HttpUtil::http_error(e.http_error, e.http_header);
+		}
+		streaming_write(error.c_str(), error.length(), true);
+		exit(-1);
+	}
+	catch (...) {
+		ERROR("unknown exception...");
+		std::string error = HttpUtil::http_error(400, "Bad request");
+		streaming_write(error.c_str(), error.length(), true);
+		exit(-1);
 	}
 	return 0;
 }
@@ -232,7 +258,7 @@ void *streaming_thread_main(void *params)
 	catch (const trap &e) {
 		ERROR("%s %s (%d)", e.what(), strerror(errno), errno);
 	}
-	do_exit(0);
+	is_terminated = true;
 	INFO("streaming thread stop.");
 
 	if (encoder->state == Encoder::ENCODER_STAT_STARTED) {
@@ -324,19 +350,10 @@ int streaming_write(const char *buffer, size_t buffer_len, bool enable_log)
 }
 //----------------------------------------------------------------------
 
-void do_exit(const char *message)
-{
-	is_terminated = true;
-	if (message) {
-		ERROR("%s", message);
-	}
-}
-//----------------------------------------------------------------------
-
 void signal_handler(int sig_no)
 {
 	INFO("signal no : %d", sig_no);
-	do_exit("signal detected..");
+	is_terminated = true;
 }
 //----------------------------------------------------------------------
 
@@ -347,6 +364,6 @@ void show_help()
 	printf(" * To active debug mode, input NUMBER on /tmp/debug_on file. (default : warning)\n");
 	printf("   NUMBER : error(1), warning(2), info(3), debug(4), log(5)\n");
 	printf("\n");
-	printf(" ex > echo \"4\" > /tmp/debug_on\n");
+	printf(" ex > echo \"4\" > /tmp/.debug_on\n");
 }
 //----------------------------------------------------------------------
