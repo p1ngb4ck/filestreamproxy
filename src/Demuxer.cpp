@@ -94,9 +94,11 @@ void Demuxer::set_filter(std::vector<unsigned long> &new_pids) throw(trap)
 		throw(trap("demux filter setting failed."));
 	DEBUG("demux filter setting ok.");
 
-	for(int i = 0; i < new_pids.size(); ++i) {
+	for(int i = 1; i < new_pids.size(); ++i) {
 		uint16_t pid = new_pids[i];
-
+		if (pid == 0) {
+			continue;
+		}
 		if(already_exist(pids, pid))
 			continue;
 		LOG("demux add pid (%x).", pid);

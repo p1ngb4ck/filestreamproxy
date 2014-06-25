@@ -15,6 +15,8 @@
 #include <semaphore.h>
 #include <sys/mman.h>
 
+#include "Logger.h"
+
 using namespace std;
 //-------------------------------------------------------------------------------
 
@@ -66,8 +68,18 @@ protected:
 		return true;
 	}
 
-	void Wait() { sem_wait(mSemId); }
-	void Post() { sem_post(mSemId); }
+	void Wait()
+	{
+		DEBUG("WAIT-BEFORE");
+		sem_wait(mSemId);
+		DEBUG("WAIT-AFTER");
+	}
+	void Post()
+	{
+		DEBUG("POST-BEFORE");
+		sem_post(mSemId);
+		DEBUG("POST-AFTER");
+	}
 
 public:
 	~SharedMemory()

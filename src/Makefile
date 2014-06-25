@@ -50,7 +50,7 @@ install:
 	@$(UPLOAD) $(IP) . $(PROJECT) /usr/bin
 
 clean:
-	$(RM) $(PROJECT) $(OBJS) *.log 
+	$(RM) $(PROJECT) $(OBJS) *.log *.o
 
 .showinfo:
 	@echo "-----------------------------------------------------"

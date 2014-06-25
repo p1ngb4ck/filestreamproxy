@@ -79,6 +79,7 @@ Encoder::Encoder() throw(trap)
 
 Encoder::~Encoder()
 {
+	Post();
 	if (fd != -1) {
 		if (state == ENCODER_STAT_STARTED) {
 			DEBUG("stop transcoding..");

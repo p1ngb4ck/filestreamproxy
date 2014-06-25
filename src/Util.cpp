@@ -140,6 +140,6 @@ void Util::kill_process(int pid)
 {
 	int result = kill(pid, SIGINT);
 	DEBUG("SEND SIGINT to %d, result : %d", pid, result);
-	sleep(1);
+	//sleep(1);
 }
 //----------------------------------------------------------------------
