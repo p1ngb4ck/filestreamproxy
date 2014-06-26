@@ -62,7 +62,7 @@ bool HttpHeader::parse_request(std::string header)
 			}
 		}
 
-		if (page == "/file") {
+		if (page == "/file_stream") {
 			type = HttpHeader::TRANSCODING_FILE;
 		}
 		else if (page == "/m3u") {
@@ -130,7 +130,7 @@ std::string HttpHeader::build_response(Mpeg *source)
 			std::ostringstream m3u_oss;
 			m3u_oss << "#EXTM3U\n";
 			m3u_oss << "#EXTVLCOPT--http-reconnect=true\n";
-			m3u_oss << "http://" << params["Host"] << "/file?file=" << page_params["file"];
+			m3u_oss << "http://" << params["Host"] << "/file_stream?file=" << page_params["file"];
 			if (page_params["position"] != "") {
 				m3u_oss << "&position=" << page_params["position"];
 			}
