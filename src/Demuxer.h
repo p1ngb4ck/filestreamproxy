@@ -11,7 +11,7 @@
 #include <vector>
 #include <string>
 
-#include "trap.h"
+#include "3rdparty/trap.h"
 
 #include "Util.h"
 #include "Http.h"

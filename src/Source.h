@@ -8,7 +8,7 @@
 #ifndef SOURCE_H_
 #define SOURCE_H_
 
-#include "trap.h"
+#include "3rdparty/trap.h"
 //----------------------------------------------------------------------
 
 class Source

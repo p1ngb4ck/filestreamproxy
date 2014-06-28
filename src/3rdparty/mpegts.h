@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include "Source.h"          // oskwon
+#include "../Source.h"          // oskwon
 class MpegTS : public Source // oskwon : inherit Source class.
 {
 	private:

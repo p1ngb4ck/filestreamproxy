@@ -8,8 +8,8 @@
 #ifndef MPEG_H_
 #define MPEG_H_
 
-#include "trap.h"
-#include "mpegts.h"
+#include "3rdparty/trap.h"
+#include "3rdparty/mpegts.h"
 //----------------------------------------------------------------------
 
 class HttpHeader;

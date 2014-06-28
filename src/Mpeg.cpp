@@ -29,7 +29,7 @@ void Mpeg::seek(HttpHeader &header)
 			}
 		}
 		else {
-			off_t position_offset;
+			pts_t position_offset;
 			if (!relative.empty()) {
 				int dur = calc_length();
 				DEBUG("duration : %d", dur);

@@ -10,7 +10,7 @@
 
 #include <string>
 
-#include "trap.h"
+#include "3rdparty/trap.h"
 
 #include "SharedMemory.h"
 //----------------------------------------------------------------------

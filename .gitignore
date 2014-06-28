@@ -1,4 +1,3 @@
-streamproxy
 filestreamproxy
 transtreamproxy
 *.ts
@@ -10,10 +9,9 @@ transtreamproxy
 .cproject
 .project
 .deps
+.DS_Store
 version.h
 up.sh
-Makefile
-Makefile.in
 aclocal.m4
 autom4te.cache
 config.h

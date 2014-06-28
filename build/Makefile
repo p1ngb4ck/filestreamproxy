@@ -1,8 +1,8 @@
 #============================================================================
 # Name        : Makefile (transtreamproxy)
-# Author      : oskwon(kos@dev3)
+# Author      : oskwon(oskwon@dev3)
 # Version     : 
-# Copyright   : Copyright(c)2013 Vu+ Team. All right reserved.
+# Copyright   : Copyright(c)2014 Vu+ Team. All right reserved.
 # Description :
 #============================================================================
 
@@ -19,21 +19,29 @@ PROJECT = transtreamproxy
 TOP=$(PWD)/..
 OBJ=./obj/
 
-CROSS=$(OETOP)/$(MODEL)/build/tmp/cross/mipsel/bin/mipsel-oe-linux-
+ifeq ($(CROSS),YES)
 SYSROOT=$(OETOP)/$(MODEL)/build/tmp/staging/mipsel-oe-linux
+TOOLCHAIN=$(OETOP)/$(MODEL)/build/tmp/cross/mipsel/bin/mipsel-oe-linux-
+endif
 
 RM=rm -Rf
-CXX=$(CROSS)g++
-LD=$(CROSS)ld
-STRIP=$(CROSS)strip
-UPLOAD=$(TOP)/script/script.upload
+CXX=$(TOOLCHAIN)g++
+LD=$(TOOLCHAIN)ld
+STRIP=$(TOOLCHAIN)strip
+UPLOAD=./script.upload
+
+ifeq ($(MODE),DEBUG)
+CFLAGS += -g
+else
+CFLAGS += -O2
+endif
+CFLAGS += -D_MAJOR=$(MAJOR) -D_MINOR=$(MINOR) -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
+CFLAGS += -I$(SYSROOT)/usr/include
+LDFLAGS += -L$(SYSROOT)/usr/lib -lpthread -lrt
 
 SRCS = $(shell find ../src/ -name "*.cpp")
-OBJS=$(SRCS:.cpp=.o)
-
-CFLAGS += -D_MAJOR=$(MAJOR) -D_MINOR=$(MINOR) 
-CFLAGS += -O2 -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I../src -I../src/external -I$(SYSROOT)/usr/include 
-LDFLAGS += -L$(SYSROOT)/usr/lib -lpthread -lrt
+OBJS = $(SRCS:.cpp=.o)
+CFLAGS += $(addprefix -I, $(shell find ../src/ -type d))
 
 .SUFFIXES : .cpp .o
 .PHONY : all clean install .showinfo .prepare $(PROJECT)
@@ -48,10 +56,10 @@ $(PROJECT):$(OBJS)
 	$(STRIP) $@
 
 install:
-	@$(UPLOAD) $(IP) . $(PROJECT) $(UPDIR)
+	$(UPLOAD) $(UPIP) . $(PROJECT) $(UPDIR)
 
 clean:
-	$(RM) $(PROJECT) obj *.log *.o
+	$(RM) $(PROJECT) obj *.o *.a *.d *.log
 
 .prepare:
 	@if [ ! -e obj ]; then mkdir obj; fi

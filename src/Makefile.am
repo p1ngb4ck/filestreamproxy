@@ -3,15 +3,15 @@
 bin_PROGRAMS = transtreamproxy
 transtreamproxy_SOURCES = \
 	main.cpp \
-	uThread.cpp \
-	eParser.cpp \
-	eURIDecoder.cpp \
-	eUpstreamSocket.cpp \
-	eTransCodingDevice.cpp \
-	eFilePumpThread.cpp \
-	eNetworkPumpThread.cpp \
-	eDemuxPumpThread.cpp \
-	eHostInfoMgr.cpp
+	Demuxer.cpp \
+	Encoder.cpp \
+	Http.cpp \
+	Logger.cpp \
+	Mpeg.cpp \
+	UriDecoder.cpp \
+	Util.cpp \
+	3rdparty/mpegts.cpp \
+	3rdparty/trap.cpp
 
-transtreamproxy_CXXFLAGS = $(LIBSDL_CFLAGS) @WARN_CFLAGS@
-transtreamproxy_LDADD = $(LIBLTDL) @PTHREAD_LIBS@ @RT_LIBS@
+transtreamproxy_CXXFLAGS = $(LIBSDL_CFLAGS) -Wno-unused-result -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
+transtreamproxy_LDADD = $(LIBLTDL) -lpthread -lrt
