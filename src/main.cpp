@@ -1,293 +1,366 @@
 /*
  * main.cpp
  *
- *  Created on: 2013. 9. 12.
- *      Author: kos
+ *  Created on: 2014. 6. 10.
+ *      Author: oskwon
  */
 
 #include <stdio.h>
-#include <string.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <stdlib.h>
-#include <signal.h>
 #include <unistd.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <sys/types.h>
+#include <string.h>
+#include <pthread.h>
+#include <poll.h>
+#include <errno.h>
+#include <signal.h>
 
-#include <vector>
 #include <string>
-#include <iterator>
 
-#include "uStringTool.h"
+#include "Util.h"
+#include "Logger.h"
 
-#include "ePreDefine.h"
-#include "eParser.h"
-#include "eUpstreamSocket.h"
-#include "eTransCodingDevice.h"
-#include "eHostInfoMgr.h"
+#include "Http.h"
+#include "Mpeg.h"
 
-#include "eFilePumpThread.h"
-#include "eDemuxPumpThread.h"
-#include "eNetworkPumpThread.h"
-
-#ifdef DEBUG_LOG
-int myPid = 0;
-FILE* fpLog = 0;
-//#undef LOG
-//#define LOG(X,...) { do{}while(0); }
-#endif
+#include "Demuxer.h"
+#include "Encoder.h"
+#include "UriDecoder.h"
 
 using namespace std;
-//-------------------------------------------------------------------------------
+//----------------------------------------------------------------------
 
-eFilePumpThread*    hFilePumpThread    = 0;
-eDemuxPumpThread*   hDemuxPumpThread   = 0;
-eNetworkPumpThread* hNetworkPumpThread = 0;
-eTransCodingDevice* hTranscodingDevice = 0;
+#define BUFFFER_SIZE (188 * 256)
 
-void SigHandler(int aSigNo);
-//-------------------------------------------------------------------------------
+void show_help();
+void signal_handler(int sig_no);
 
-/*
-GET /1:0:19:2B66:3F3:1:C00000:0:0:0: HTTP/1.1
-Host: 192.168.102.177:8002
-User-Agent: VLC/2.0.8 LibVLC/2.0.8
-Range: bytes=0-
-Connection: close
-Icy-MetaData: 1
+void *source_thread_main(void *params);
+void *streaming_thread_main(void *params);
 
-GET /file?file=/hdd/movie/20131023%201005%20-%20DW%20-%20Germany%20Today.ts HTTP/1.1
-*/
-int main(int argc, char** argv)
+int streaming_write(const char *buffer, size_t buffer_len, bool enable_log = false);
+//----------------------------------------------------------------------
+
+static bool is_terminated = true;
+static int source_thread_id, stream_thread_id;
+static pthread_t source_thread_handle, stream_thread_handle;
+//----------------------------------------------------------------------
+
+int main(int argc, char **argv)
 {
-	char request[MAX_LINE_LENGTH] = {0};
-	int videopid = 0, audiopid = 0, pmtid = 0;
-
-#ifdef DEBUG_LOG
-	myPid = getpid();
-	fpLog = fopen("/tmp/transtreamproxy.log", "a+");
-#endif
-
-	std::string ipaddr = eHostInfoMgr::GetHostAddr();
-#ifdef DEBUG_LOG
-	LOG("client info : %s, device count : %d", ipaddr.c_str(), eTransCodingDevice::GetMaxDeviceCount());
-#endif
-	eHostInfoMgr hostmgr("tsp", eTransCodingDevice::GetMaxDeviceCount());
-	if (hostmgr.Init() == false) {
-		return 1;
-	}
-	if (hostmgr.IsExist(ipaddr) > 0) {
-		hostmgr.Update(ipaddr, getpid());
-	} else {
-		hostmgr.Register(ipaddr, getpid());
-	}
-
-	signal(SIGINT, SigHandler);
-
-	if (!ReadRequest(request)) {
-		RETURN_ERR_400();
-	}
-#ifdef DEBUG_LOG
-	LOG("%s", request);
-#endif
-
-	if (strncmp(request, "GET /", 5)) {
-		RETURN_ERR_400();
-	}
-
-	char* http = strchr(request + 5, ' ');
-	if (!http || strncmp(http, " HTTP/1.", 7)) {
-#ifdef DEBUG_LOG
-		LOG("Not support request (%s).", http);
-#endif
-		RETURN_ERR_400("Not support request (%s).", http);
-	}
-
-#ifdef DEBUG_LOG
-	LOG("%s", 	request + 5);
-#endif
-
-	bool isfilestream = true;
-	std::string responsedata = "";
-	if(strncmp(request + 4, "/file?", 6) != 0) {
-		char authorization[MAX_LINE_LENGTH] = {0};
-		if(eParser::Authorization(authorization)) {
-			RETURN_ERR_401();
-		}
-
-		eUpstreamSocket upstreamsocket;
-		if(!upstreamsocket.Connect()) {
-#ifdef DEBUG_LOG
-			LOG("Upstream connect failed.");
-#endif
-			RETURN_ERR_502("Upstream connect failed.");
-		}
-
-		if(upstreamsocket.Request(eParser::ServiceRef(request + 5, authorization), responsedata) < 0) {
-#ifdef DEBUG_LOG
-			LOG("Upstream request failed.");
-#endif
-			RETURN_ERR_502();
-		}
-		isfilestream = false;
-	}
-
-	eTransCodingDevice transcoding;
-	if(transcoding.Open() == false) {
-#ifdef DEBUG_LOG
-		LOG("Open device failed.");
-#endif
-		return 1;//RETURN_ERR_502("Open device failed.");
-	}
-	hTranscodingDevice = &transcoding;
-
-	bool ispidseted = false;
-	eNetworkPumpThread networkpump(transcoding.GetDeviceFd());
-	hNetworkPumpThread = &networkpump;
-
-	if(!isfilestream) {
-		int demuxno = 0;
-		std::string wwwauthenticate = "";
-		std::vector<unsigned long> pidlist;
-		ispidseted = eParser::LiveStreamPid(responsedata, pidlist, demuxno, videopid, audiopid, pmtid, wwwauthenticate);
-		if(ispidseted) {
-			if(transcoding.SetStreamPid(videopid, audiopid, pmtid) == false) {
-#ifdef DEBUG_LOG
-				LOG("Pid setting failed.");
-#endif
-				return 1;//RETURN_ERR_502("Pid setting failed.");
-			}
-		} else {
-#ifdef DEBUG_LOG
-			LOG("Invalid upstream response.");
-#endif
-			RETURN_ERR_502("Invalid upstream response.");
-		}
-
-#ifdef DEBUG_LOG
-		LOG("stream pids parsing result : %d, video : %d, audio : %d, pmt : %d, pids size : [%d]", ispidseted, videopid, audiopid, pmtid, pidlist.size());
-		for(int j = 0; j < pidlist.size(); ++j) {
-			LOG("saved pid : [%x]", pidlist[j]);
-		}
-#endif
-
-		eDemuxPumpThread demuxpump;
-		if(pidlist.size() > 0) {
-			if(!demuxpump.Open(demuxno)) {
-#ifdef DEBUG_LOG
-				LOG("Demux open failed.");
-#endif
-				return 1;//RETURN_ERR_502("%s", demuxpump.GetMessage().c_str());
-			}
-			demuxpump.SetDeviceFd(transcoding.GetDeviceFd());
-			demuxpump.Start();
-			hDemuxPumpThread = &demuxpump;
-
-			if(demuxpump.GetState() < eDemuxState::stSetedFilter) {
-				if(!demuxpump.SetFilter(pidlist)) {
-#ifdef DEBUG_LOG
-					LOG("Demux setting filter failed.");
-#endif
-					return 1;//RETURN_ERR_502("Demux setting filter failed.");
-				}
-			}
-			if(!demuxpump.SetPidList(pidlist)) {
-#ifdef DEBUG_LOG
-				LOG("PID setting failed.");
-#endif
-				RETURN_ERR_502("PID setting failed.");
-			}
-		} else {
-#ifdef DEBUG_LOG
-			LOG("No found PID for selected stream.");
-#endif
-			return 1;//RETURN_ERR_502("No found PID for selected stream.");
-		}
-
-#ifdef NORMAL_STREAMPROXY
-		demuxpump.Join();
-#else
-		if(transcoding.StartTranscoding()  == false) {
-			return 1;//RETURN_ERR_502("Transcoding start failed.");
-		}
-		networkpump.Start();
-		networkpump.Join();
-		demuxpump.Stop();
-		demuxpump.Join();
-#endif
-	} else {
-		std::string srcfilename = "";
-		eParser::FileName(request, http, srcfilename);
-
-		ispidseted = eParser::MetaData(srcfilename, videopid, audiopid);
-		if(ispidseted) {
-			if(transcoding.SetStreamPid(videopid, audiopid) == false) {
-#ifdef DEBUG_LOG
-				LOG("No found PID for selected stream.");
-#endif
-				return 1;//RETURN_ERR_502("Pid setting failed.");
-			}
-		}
-#ifdef DEBUG_LOG
-		LOG("meta parsing result : %d, video : %d, audio : %d", ispidseted, videopid, audiopid);
-#endif
-
-		eFilePumpThread filepump(transcoding.GetDeviceFd());
-		if(filepump.Open(srcfilename) == false) {
-#ifdef DEBUG_LOG
-			LOG("TS file open failed.");
-#endif
-			RETURN_ERR_503("TS file open failed.");
-		}
-		filepump.Start();
-		hFilePumpThread = &filepump;
-
-		sleep(1);
-		filepump.SeekOffset(0);
-		if(transcoding.StartTranscoding() == false) {
-#ifdef DEBUG_LOG
-			LOG("Transcoding start failed.");
-#endif
-			return 1;//RETURN_ERR_502("Transcoding start failed.");
-		}
-
-		networkpump.Start();
-		networkpump.Join();
-		filepump.Stop();
-		filepump.Join();
-	}
-#ifdef DEBUG_LOG
-	fclose(fpLog);
-#endif
-	return 0;
-}
-//-------------------------------------------------------------------------------
-
-char* ReadRequest(char* aRequest)
-{
-	return fgets(aRequest, MAX_LINE_LENGTH-1, stdin);
-}
-//-------------------------------------------------------------------------------
-
-void SigHandler(int aSigNo)
-{
-#ifdef DEBUG_LOG
-	LOG("%d", aSigNo);
-#endif
-	switch(aSigNo) {
-	case SIGINT:
-#ifdef DEBUG_LOG
-		LOG("SIGINT detected.");
-#endif
-//		if(hDemuxPumpThread) {
-//			hDemuxPumpThread->Close();
-//		}
-//		if(hTranscodingDevice) {
-//			hTranscodingDevice->close();
-//		}
+	if (argc > 1) {
+		if (strcmp(argv[1], "-h") == 0)
+			show_help();
 		exit(0);
 	}
+	Logger::instance()->init("/tmp/transtreamproxy", Logger::WARNING);
+
+	signal(SIGINT, signal_handler);
+
+	HttpHeader header;
+	std::string req = HttpHeader::read_request();
+
+	DEBUG("request head :\n%s", req.c_str());
+
+	try {
+		if (req.find("\r\n\r\n") == std::string::npos) {
+			throw(http_trap("no found request done code.", 400, "Bad Request"));
+		}
+
+		if (header.parse_request(req) == false) {
+			throw(http_trap("request parse error.", 400, "Bad Request"));
+		}
+
+		if (header.method != "GET") {
+			throw(http_trap("not support request type.", 400, "Bad Request, not support request"));
+		}
+
+		Encoder encoder;
+		Source *source = 0;
+		ThreadParams thread_params = { 0, &encoder, &header };
+
+		int video_pid = 0, audio_pid = 0, pmt_pid = 0;
+
+		switch(header.type) {
+		case HttpHeader::TRANSCODING_FILE:
+			try {
+				std::string uri = UriDecoder().decode(header.page_params["file"].c_str());
+				Mpeg *ts = new Mpeg(uri, false);
+				pmt_pid   = ts->pmt_pid;
+				video_pid = ts->video_pid;
+				audio_pid = ts->audio_pid;
+				source = ts;
+			}
+			catch (const trap &e) {
+				throw(http_trap(e.what(), 404, "Not Found"));
+			}
+			break;
+		case HttpHeader::TRANSCODING_LIVE:
+			try {
+				Demuxer *dmx = new Demuxer(&header);
+				pmt_pid   = dmx->pmt_pid;
+				video_pid = dmx->video_pid;
+				audio_pid = dmx->audio_pid;
+				source = dmx;
+			}
+			catch (const http_trap &e) {
+				throw(e);
+			}
+			break;
+		case HttpHeader::M3U:
+			try {
+				std::string response = header.build_response((Mpeg*) source);
+				if (response != "") {
+					streaming_write(response.c_str(), response.length(), true);
+				}
+			}
+			catch (...) {
+			}
+			exit(0);
+		default:
+			throw(http_trap(std::string("not support source type : ") + Util::ultostr(header.type), 400, "Bad Request"));
+		}
+		thread_params.source = source;
+
+		if (!encoder.retry_open(2, 3)) {
+			throw(http_trap("encoder open fail.", 503, "Service Unavailable"));
+		}
+
+		if (encoder.state == Encoder::ENCODER_STAT_OPENED) {
+			std::string response = header.build_response((Mpeg*) source);
+			if (response == "") {
+				throw(http_trap("response build fail.", 503, "Service Unavailable"));
+			}
+
+			streaming_write(response.c_str(), response.length(), true);
+
+			if (header.type == HttpHeader::TRANSCODING_FILE) {
+				((Mpeg*) source)->seek(header);
+			}
+
+			if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
+				throw(http_trap("video pid setting fail.", 503, "Service Unavailable"));
+			}
+			if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
+				throw(http_trap("audio pid setting fail.", 503, "Service Unavailable"));
+			}
+			if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
+				throw(http_trap("pmt pid setting fail.", 503, "Service Unavailable"));
+			}
+		}
+
+		is_terminated = false;
+		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, (void *)&thread_params);
+		if (source_thread_id < 0) {
+			is_terminated = true;
+			throw(http_trap("souce thread create fail.", 503, "Service Unavailable"));
+		}
+		else {
+			pthread_detach(source_thread_handle);
+			if (!encoder.ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
+				is_terminated = true;
+				throw(http_trap("start transcoding fail.", 503, "Service Unavailable"));
+			}
+			else {
+				stream_thread_id = pthread_create(&stream_thread_handle, 0, streaming_thread_main, (void *)&thread_params);
+				if (stream_thread_id < 0) {
+					is_terminated = true;
+					throw(http_trap("stream thread create fail.", 503, "Service Unavailable"));
+				}
+			}
+		}
+		pthread_join(stream_thread_handle, 0);
+		is_terminated = true;
+
+		if (source != 0) {
+			delete source;
+			source = 0;
+		}
+	}
+	catch (const http_trap &e) {
+		ERROR("%s", e.message.c_str());
+		std::string error = "";
+		if (e.http_error == 401 && header.authorization.length() > 0) {
+			error = header.authorization;
+		}
+		else {
+			error = HttpUtil::http_error(e.http_error, e.http_header);
+		}
+		streaming_write(error.c_str(), error.length(), true);
+		exit(-1);
+	}
+	catch (...) {
+		ERROR("unknown exception...");
+		std::string error = HttpUtil::http_error(400, "Bad request");
+		streaming_write(error.c_str(), error.length(), true);
+		exit(-1);
+	}
+	return 0;
 }
-//-------------------------------------------------------------------------------
+//----------------------------------------------------------------------
+
+void *streaming_thread_main(void *params)
+{
+	if (is_terminated) return 0;
+
+	INFO("streaming thread start.");
+	Encoder *encoder = ((ThreadParams*) params)->encoder;
+	HttpHeader *header = ((ThreadParams*) params)->request;
+
+	try {
+		int poll_state, rc, wc;
+		struct pollfd poll_fd[2];
+		unsigned char buffer[BUFFFER_SIZE];
+
+		poll_fd[0].fd = encoder->get_fd();
+		poll_fd[0].events = POLLIN | POLLHUP;
+
+		while(!is_terminated) {
+			poll_state = poll(poll_fd, 1, 1000);
+			if (poll_state == -1) {
+				throw(trap("poll error."));
+			}
+			else if (poll_state == 0) {
+				continue;
+			}
+			if (poll_fd[0].revents & POLLIN) {
+				rc = wc = 0;
+				rc = read(encoder->get_fd(), buffer, BUFFFER_SIZE - 1);
+				if (rc <= 0) {
+					break;
+				}
+				else if (rc > 0) {
+					wc = streaming_write((const char*) buffer, rc);
+					if (wc < rc) {
+						//DEBUG("need rewrite.. remain (%d)", rc - wc);
+						int retry_wc = 0;
+						for (int remain_len = rc - wc; rc != wc; remain_len -= retry_wc) {
+							poll_fd[0].revents = 0;
+
+							retry_wc = streaming_write((const char*) (buffer + rc - remain_len), remain_len);
+							wc += retry_wc;
+						}
+						LOG("re-write result : %d - %d", wc, rc);
+					}
+				}
+			}
+			else if (poll_fd[0].revents & POLLHUP)
+			{
+				if (encoder->state == Encoder::ENCODER_STAT_STARTED) {
+					DEBUG("stop transcoding..");
+					encoder->ioctl(Encoder::IOCTL_STOP_TRANSCODING, 0);
+				}
+				break;
+			}
+		}
+	}
+	catch (const trap &e) {
+		ERROR("%s %s (%d)", e.what(), strerror(errno), errno);
+	}
+	is_terminated = true;
+	INFO("streaming thread stop.");
+
+	if (encoder->state == Encoder::ENCODER_STAT_STARTED) {
+		DEBUG("stop transcoding..");
+		encoder->ioctl(Encoder::IOCTL_STOP_TRANSCODING, 0);
+	}
+
+	pthread_exit(0);
+
+	return 0;
+}
+//----------------------------------------------------------------------
+
+void *source_thread_main(void *params)
+{
+	Source *source = ((ThreadParams*) params)->source;
+	Encoder *encoder = ((ThreadParams*) params)->encoder;
+	HttpHeader *header = ((ThreadParams*) params)->request;
+
+	INFO("source thread start.");
+
+	try {
+		int poll_state, rc, wc;
+		struct pollfd poll_fd[2];
+		unsigned char buffer[BUFFFER_SIZE];
+
+		poll_fd[0].fd = encoder->get_fd();
+		poll_fd[0].events = POLLOUT;
+
+		poll_fd[1].fd = source->get_fd();
+		poll_fd[1].events = POLLIN;
+
+		while(!is_terminated) {
+			poll_state = poll(poll_fd, 2, 1000);
+			if (poll_state == -1) {
+				throw(trap("poll error."));
+			}
+			else if (poll_state == 0) {
+				continue;
+			}
+
+			if (poll_fd[0].revents & POLLOUT) {
+				rc = wc = 0;
+				if (poll_fd[1].revents & POLLIN) {
+					rc = read(source->get_fd(), buffer, BUFFFER_SIZE - 1);
+					if (rc == 0) {
+						break;
+					}
+					else if (rc > 0) {
+						wc = write(encoder->get_fd(), buffer, rc);
+						//DEBUG("write : %d", wc);
+						if (wc < rc) {
+							//DEBUG("need rewrite.. remain (%d)", rc - wc);
+							int retry_wc = 0;
+							for (int remain_len = rc - wc; rc != wc; remain_len -= retry_wc) {
+								poll_fd[0].revents = 0;
+
+								poll_state = poll(poll_fd, 1, 1000);
+								if (poll_fd[0].revents & POLLOUT) {
+									retry_wc = write(encoder->get_fd(), (buffer + rc - remain_len), remain_len);
+									wc += retry_wc;
+								}
+							}
+							LOG("re-write result : %d - %d", wc, rc);
+							usleep(500000);
+						}
+					}
+				}
+			}
+		}
+	}
+	catch (const trap &e) {
+		ERROR("%s %s (%d)", e.what(), strerror(errno), errno);
+	}
+	INFO("source thread stop.");
+
+	pthread_exit(0);
+
+	return 0;
+}
+//----------------------------------------------------------------------
+
+int streaming_write(const char *buffer, size_t buffer_len, bool enable_log)
+{
+	if (enable_log) {
+		DEBUG("response data :\n%s", buffer);
+	}
+	return write(1, buffer, buffer_len);
+}
+//----------------------------------------------------------------------
+
+void signal_handler(int sig_no)
+{
+	INFO("signal no : %d", sig_no);
+	is_terminated = true;
+}
+//----------------------------------------------------------------------
+
+void show_help()
+{
+	printf("usage : transtreamproxy [-h]\n");
+	printf("\n");
+	printf(" * To active debug mode, input NUMBER on /tmp/debug_on file. (default : warning)\n");
+	printf("   NUMBER : error(1), warning(2), info(3), debug(4), log(5)\n");
+	printf("\n");
+	printf(" ex > echo \"4\" > /tmp/.debug_on\n");
+}
+//----------------------------------------------------------------------

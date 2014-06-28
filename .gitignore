@@ -24,4 +24,5 @@ install-sh
 missing
 stamp-h1
 config.h.in~
-
+config.mk
+config.mk.bak

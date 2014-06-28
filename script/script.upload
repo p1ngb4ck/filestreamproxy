@@ -1,0 +1,33 @@
+#!/bin/sh
+
+IP=$1
+LOC=$2
+BIN=$3
+TAR=$4
+
+usage() {
+	echo ""
+	echo "usage : $0 [IP] [LOCAL] [BIN] [TARGET]"
+	echo "      - IP     : target ip"
+	echo "      - BIN    : binary name"
+	echo "      - LOCAL  : binary path"
+	echo "      - TARGET : target path to install"
+	exit
+}
+
+if [ -z $IP ];  then echo "[!] IP is not set.";     usage; fi
+if [ -z $BIN ]; then echo "[!] BIN is not set.";    usage; fi
+if [ -z $LOC ]; then echo "[!] LOCAL is not set.";  usage; fi
+if [ -z $TAR ]; then echo "[!] TARGET is not set."; usage; fi
+
+echo "[*] upload... $LOC/$BIN to $IP:$TAR"
+cd $LOC
+ftp -n $IP << +
+user root a
+prompt off
+bi
+cd $TAR
+put $BIN
+bye
++
+
