@@ -21,7 +21,8 @@ public:
 		UNKNOWN = 0,
 		TRANSCODING_LIVE,
 		TRANSCODING_FILE,
-		M3U
+		M3U,
+		TRANSCODING_FILE_CHECK
 	};
 
 	int type;

@@ -105,6 +105,7 @@ int main(int argc, char **argv)
 				throw(e);
 			}
 			break;
+		case HttpHeader::TRANSCODING_FILE_CHECK:
 		case HttpHeader::M3U:
 			try {
 				std::string response = header.build_response((Mpeg*) source);

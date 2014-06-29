@@ -62,8 +62,13 @@ bool HttpHeader::parse_request(std::string header)
 			}
 		}
 
-		if (page == "/file_stream") {
-			type = HttpHeader::TRANSCODING_FILE;
+		if (page == "/file") {
+			if (page_params["check"] == "valid") {
+				type = HttpHeader::TRANSCODING_FILE_CHECK;
+			}
+			else {
+				type = HttpHeader::TRANSCODING_FILE;
+			}
 		}
 		else if (page == "/m3u") {
 			type = HttpHeader::M3U;
@@ -87,6 +92,14 @@ std::string HttpHeader::build_response(Mpeg *source)
 	std::ostringstream oss;
 
 	switch(type) {
+	case HttpHeader::TRANSCODING_FILE_CHECK: {
+			oss << http_ok;
+			oss << http_connection;
+			oss << "Content-Type: text/plain\r\n";
+			oss << http_server;
+			oss << http_done;
+		}
+		break;
 	case HttpHeader::TRANSCODING_FILE: {
 			std::string range = params["Range"];
 			off_t seek_offset = 0, content_length = 0;
@@ -130,7 +143,7 @@ std::string HttpHeader::build_response(Mpeg *source)
 			std::ostringstream m3u_oss;
 			m3u_oss << "#EXTM3U\n";
 			m3u_oss << "#EXTVLCOPT--http-reconnect=true\n";
-			m3u_oss << "http://" << params["Host"] << "/file_stream?file=" << page_params["file"];
+			m3u_oss << "http://" << params["Host"] << "/file?file=" << page_params["file"];
 			if (page_params["position"] != "") {
 				m3u_oss << "&position=" << page_params["position"];
 			}
