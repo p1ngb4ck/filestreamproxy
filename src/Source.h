@@ -17,6 +17,7 @@ public:
 	Source(){}
 	virtual ~Source(){}
 	virtual int get_fd() const throw() = 0;
+	virtual bool is_initialized() = 0;
 };
 //----------------------------------------------------------------------
 

@@ -43,6 +43,7 @@ public:
 	Demuxer(HttpHeader *header) throw(http_trap);
 	virtual ~Demuxer() throw();
 	int get_fd() const throw();
+	bool is_initialized() { return true; }
 };
 //----------------------------------------------------------------------
 

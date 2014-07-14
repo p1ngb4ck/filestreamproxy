@@ -137,14 +137,18 @@ int main(int argc, char **argv)
 				((Mpeg*) source)->seek(header);
 			}
 
-			if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
-				throw(http_trap("video pid setting fail.", 503, "Service Unavailable"));
-			}
-			if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
-				throw(http_trap("audio pid setting fail.", 503, "Service Unavailable"));
-			}
-			if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
-				throw(http_trap("pmt pid setting fail.", 503, "Service Unavailable"));
+			if (source->is_initialized()) {
+				if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
+					throw(http_trap("video pid setting fail.", 503, "Service Unavailable"));
+				}
+				if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
+					throw(http_trap("audio pid setting fail.", 503, "Service Unavailable"));
+				}
+				if (pmt_pid != -1) {
+					if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
+						throw(http_trap("pmt pid setting fail.", 503, "Service Unavailable"));
+					}
+				}
 			}
 		}
 
@@ -156,6 +160,11 @@ int main(int argc, char **argv)
 		}
 		else {
 			pthread_detach(source_thread_handle);
+
+			if (!source->is_initialized()) {
+				sleep(1);
+			}
+
 			if (!encoder.ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
 				is_terminated = true;
 				throw(http_trap("start transcoding fail.", 503, "Service Unavailable"));

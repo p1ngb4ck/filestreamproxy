@@ -9,6 +9,13 @@
 #include "Http.h"
 #include "Util.h"
 #include "Logger.h"
+
+#include <vector>
+#include <string>
+#include <fstream>
+#include <iterator>
+
+using namespace std;
 //----------------------------------------------------------------------
 
 void Mpeg::seek(HttpHeader &header)
@@ -506,5 +513,127 @@ int Mpeg::calc_length()
 		m_duration = int(len);
 	}
 	return m_duration;
+}
+//----------------------------------------------------------------------
+
+namespace eCacheID {
+	enum {
+		cVPID = 0,
+		cAPID,
+		cTPID,
+		cPCRPID,
+		cAC3PID,
+		cVTYPE,
+		cACHANNEL,
+		cAC3DELAY,
+		cPCMDELAY,
+		cSUBTITLE,
+		cacheMax
+	};
+};
+
+/* f:40,c:00007b,c:01008f,c:03007b */
+bool Mpeg::read_ts_meta(std::string media_file_name, int &vpid, int &apid)
+{
+	std::string metafilename = media_file_name;
+	metafilename += ".meta";
+
+	std::ifstream ifs(metafilename.c_str());
+
+	if (!ifs.is_open()) {
+		DEBUG("metadata is not exists..");
+		return false;
+	}
+
+	size_t rc = 0, i = 0;
+	char buffer[1024] = {0};
+	while (!ifs.eof()) {
+		ifs.getline(buffer, 1024);
+		if (i++ == 7) {
+			DEBUG("%d [%s]", i, buffer);
+			std::vector<string> tokens;
+			Util::split(buffer, ',', tokens);
+			if(tokens.size() < 3) {
+				DEBUG("pid count size error : %d", tokens.size());
+				return false;
+			}
+
+			int setting_done = false;
+			for (int ii = 0; ii < tokens.size(); ++ii) {
+				std::string token = tokens[ii];
+				if(token.length() <= 0) continue;
+				if(token.at(0) != 'c') continue;
+
+				int cache_id = atoi(token.substr(2,2).c_str());
+				DEBUG("token : %d [%s], chcke_id : [%d]", ii, token.c_str(), cache_id);
+				switch(cache_id) {
+					case(eCacheID::cVPID):
+						vpid = strtol(token.substr(4,4).c_str(), NULL, 16);
+						DEBUG("video pid : %d", vpid);
+						setting_done = (vpid != -1 && apid != -1) ? true : false;
+						break;
+					case(eCacheID::cAC3PID):
+						apid = strtol(token.substr(4,4).c_str(), NULL, 16);
+						DEBUG("audio pid : %d", apid);
+						break;
+					case(eCacheID::cAPID):
+						apid = strtol(token.substr(4,4).c_str(), NULL, 16);
+						DEBUG("audio pid : %d", apid);
+						setting_done = (vpid != -1 && apid != -1) ? true : false;
+						break;
+				}
+				if(setting_done) break;
+			}
+			break;
+		}
+	}
+	ifs.close();
+	return true;
+}
+//-------------------------------------------------------------------------------
+
+Mpeg::Mpeg(std::string filename, bool request_time_seek) throw (trap)
+//	: MpegTS(filename)
+{
+	m_current_offset = m_base_offset = m_last_offset = 0;
+	m_splitsize = m_nrfiles = m_current_file = m_totallength = 0;
+
+	m_pts_begin = m_pts_end = m_offset_begin = m_offset_end = 0;
+	m_last_filelength = m_begin_valid = m_end_valid = m_futile =0;
+
+	m_duration = m_samples_taken = 0;
+	m_is_initialized = false;
+
+	pmt_pid = video_pid = audio_pid = -1;
+
+	fd = open(filename.c_str(), O_RDONLY | O_LARGEFILE, 0);
+	if (fd < 0) {
+		throw(trap("cannot open file"));
+	}
+
+	struct stat filestat;
+	if (fstat(fd, &filestat)) {
+		throw(trap("MpegTS::init: cannot stat"));
+	}
+	INFO("file length: %lld Mb", filestat.st_size  >> 20);
+
+	stream_length = filestat.st_size;
+
+	int apid = -1, vpid = -1;
+	if (read_ts_meta(filename, vpid, apid)) {
+		if (vpid != -1 && apid != -1) {
+			video_pid = vpid;
+			audio_pid = apid;
+			m_is_initialized = true;
+			return;
+		}
+	}
+}
+//----------------------------------------------------------------------
+
+off_t Mpeg::seek_absolute(off_t offset2)
+{
+	off_t result = seek_internal(offset2, SEEK_SET);
+	return result;
 }
 //----------------------------------------------------------------------
