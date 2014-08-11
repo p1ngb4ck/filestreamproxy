@@ -36,12 +36,18 @@ void signal_handler(int sig_no);
 void *source_thread_main(void *params);
 void *streaming_thread_main(void *params);
 
-int streaming_write(const char *buffer, size_t buffer_len, bool enable_log = false);
-//----------------------------------------------------------------------
-
 static bool is_terminated = true;
 static int source_thread_id, stream_thread_id;
 static pthread_t source_thread_handle, stream_thread_handle;
+//----------------------------------------------------------------------
+
+inline int streaming_write(const char *buffer, size_t buffer_len, bool enable_log = false)
+{
+	if (enable_log) {
+		DEBUG("response data :\n%s", buffer);
+	}
+	return write(1, buffer, buffer_len);
+}
 //----------------------------------------------------------------------
 
 int main(int argc, char **argv)
@@ -87,6 +93,12 @@ int main(int argc, char **argv)
 				pmt_pid   = ts->pmt_pid;
 				video_pid = ts->video_pid;
 				audio_pid = ts->audio_pid;
+
+				if (pmt_pid != -1) {
+					int service_pid = -1;
+					ts->find_pmt(pmt_pid, service_pid);
+				}
+
 				source = ts;
 			}
 			catch (const trap &e) {
@@ -144,6 +156,7 @@ int main(int argc, char **argv)
 				if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
 					throw(http_trap("audio pid setting fail.", 503, "Service Unavailable"));
 				}
+
 				if (pmt_pid != -1) {
 					if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
 						throw(http_trap("pmt pid setting fail.", 503, "Service Unavailable"));
@@ -345,15 +358,6 @@ void *source_thread_main(void *params)
 	pthread_exit(0);
 
 	return 0;
-}
-//----------------------------------------------------------------------
-
-int streaming_write(const char *buffer, size_t buffer_len, bool enable_log)
-{
-	if (enable_log) {
-		DEBUG("response data :\n%s", buffer);
-	}
-	return write(1, buffer, buffer_len);
 }
 //----------------------------------------------------------------------
 

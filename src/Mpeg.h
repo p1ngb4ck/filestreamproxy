@@ -71,6 +71,7 @@ public:
 	virtual ~Mpeg() throw () {}
 
 	void seek(HttpHeader &header);
+	int find_pmt(int &pmt_pid, int &service_id);
 	bool is_initialized() { return m_is_initialized; }
 	int get_fd() const	throw() { return fd; }
 };

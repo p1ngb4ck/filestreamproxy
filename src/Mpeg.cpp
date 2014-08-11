@@ -10,6 +10,8 @@
 #include "Util.h"
 #include "Logger.h"
 
+#include <sys/stat.h>
+
 #include <vector>
 #include <string>
 #include <fstream>
@@ -282,6 +284,59 @@ int Mpeg::calc_bitrate()
 		return -1;
 	}
 	return bitrate;
+}
+//----------------------------------------------------------------------
+
+int Mpeg::find_pmt(int &pmt_pid, int &service_id)
+{
+	off_t position=0;
+
+	int left = 5*1024*1024;
+
+	while (left >= 188) {
+		unsigned char packet[188];
+		int ret = read_internal(position, packet, 188);
+		if (ret != 188) {
+			DEBUG("read error");
+			break;
+		}
+		left -= 188;
+		position += 188;
+
+		if (packet[0] != 0x47) {
+			int i = 0;
+			while (i < 188) {
+				if (packet[i] == 0x47)
+					break;
+				--position; ++i;
+			}
+			continue;
+		}
+		int pid = ((packet[1] << 8) | packet[2]) & 0x1FFF;
+		int pusi = !!(packet[1] & 0x40);
+
+		if (!pusi) continue;
+
+		/* ok, now we have a PES header or section header*/
+		unsigned char *sec;
+
+		/* check for adaption field */
+		if (packet[3] & 0x20) {
+			if (packet[4] >= 183)
+				continue;
+			sec = packet + packet[4] + 4 + 1;
+		}
+		else {
+			sec = packet + 4;
+		}
+		if (sec[0])	continue; /* table pointer, assumed to be 0 */
+		if (sec[1] == 0x02) { /* program map section */
+			pmt_pid = pid;
+			service_id = (sec[4] << 8) | sec[5];
+			return 0;
+		}
+	}
+	return -1;
 }
 //----------------------------------------------------------------------
 
