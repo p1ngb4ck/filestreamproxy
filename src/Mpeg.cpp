@@ -287,7 +287,7 @@ int Mpeg::calc_bitrate()
 }
 //----------------------------------------------------------------------
 
-int Mpeg::find_pmt(int &pmt_pid, int &service_id)
+int Mpeg::find_pmt()
 {
 	off_t position=0;
 
@@ -332,7 +332,6 @@ int Mpeg::find_pmt(int &pmt_pid, int &service_id)
 		if (sec[0])	continue; /* table pointer, assumed to be 0 */
 		if (sec[1] == 0x02) { /* program map section */
 			pmt_pid = pid;
-			service_id = (sec[4] << 8) | sec[5];
 			return 0;
 		}
 	}
@@ -680,6 +679,8 @@ Mpeg::Mpeg(std::string filename, bool request_time_seek) throw (trap)
 			video_pid = vpid;
 			audio_pid = apid;
 			m_is_initialized = true;
+
+			find_pmt();
 			return;
 		}
 	}

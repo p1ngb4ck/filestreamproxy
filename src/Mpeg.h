@@ -63,6 +63,8 @@ private:
 
 	bool read_ts_meta(std::string media_file_name, int &vpid, int &apid);
 
+	int find_pmt();
+
 public:
 	off_t stream_length;
 	int pmt_pid, video_pid, audio_pid;
@@ -71,7 +73,6 @@ public:
 	virtual ~Mpeg() throw () {}
 
 	void seek(HttpHeader &header);
-	int find_pmt(int &pmt_pid, int &service_id);
 	bool is_initialized() { return m_is_initialized; }
 	int get_fd() const	throw() { return fd; }
 };

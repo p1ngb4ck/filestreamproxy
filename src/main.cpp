@@ -93,12 +93,6 @@ int main(int argc, char **argv)
 				pmt_pid   = ts->pmt_pid;
 				video_pid = ts->video_pid;
 				audio_pid = ts->audio_pid;
-
-				if (pmt_pid == -1) {
-					int service_pid = -1;
-					ts->find_pmt(pmt_pid, service_pid);
-				}
-
 				source = ts;
 			}
 			catch (const trap &e) {
