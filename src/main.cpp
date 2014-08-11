@@ -94,7 +94,7 @@ int main(int argc, char **argv)
 				video_pid = ts->video_pid;
 				audio_pid = ts->audio_pid;
 
-				if (pmt_pid != -1) {
+				if (pmt_pid == -1) {
 					int service_pid = -1;
 					ts->find_pmt(pmt_pid, service_pid);
 				}
