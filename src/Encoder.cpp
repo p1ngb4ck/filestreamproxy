@@ -80,6 +80,12 @@ Encoder::Encoder() throw(trap)
 Encoder::~Encoder()
 {
 	Post();
+	encoder_close();
+}
+//----------------------------------------------------------------------
+
+void Encoder::encoder_close()
+{
 	if (fd != -1) {
 		if (state == ENCODER_STAT_STARTED) {
 			DEBUG("stop transcoding..");

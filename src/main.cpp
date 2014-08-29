@@ -36,9 +36,21 @@ void signal_handler(int sig_no);
 void *source_thread_main(void *params);
 void *streaming_thread_main(void *params);
 
+static Source *source = 0;
+static Encoder *encoder = 0;
+
 static bool is_terminated = true;
 static int source_thread_id, stream_thread_id;
 static pthread_t source_thread_handle, stream_thread_handle;
+//----------------------------------------------------------------------
+
+void cbexit()
+{
+	INFO("release resource start");
+	if (encoder) { delete encoder; encoder = 0; }
+	if (source)  { delete source; source = 0; }
+	INFO("release resource finish");
+}
 //----------------------------------------------------------------------
 
 inline int streaming_write(const char *buffer, size_t buffer_len, bool enable_log = false)
@@ -59,7 +71,8 @@ int main(int argc, char **argv)
 	}
 	Logger::instance()->init("/tmp/transtreamproxy", Logger::WARNING);
 
-	signal(SIGINT, signal_handler);
+	::atexit(cbexit);
+	::signal(SIGINT, signal_handler);
 
 	HttpHeader header;
 	std::string req = HttpHeader::read_request();
@@ -78,10 +91,6 @@ int main(int argc, char **argv)
 		if (header.method != "GET") {
 			throw(http_trap("not support request type.", 400, "Bad Request, not support request"));
 		}
-
-		Encoder encoder;
-		Source *source = 0;
-		ThreadParams thread_params = { 0, &encoder, &header };
 
 		int video_pid = 0, audio_pid = 0, pmt_pid = 0;
 
@@ -125,13 +134,13 @@ int main(int argc, char **argv)
 		default:
 			throw(http_trap(std::string("not support source type : ") + Util::ultostr(header.type), 400, "Bad Request"));
 		}
-		thread_params.source = source;
 
-		if (!encoder.retry_open(2, 3)) {
+		encoder = new Encoder();
+		if (!encoder->retry_open(2, 3)) {
 			throw(http_trap("encoder open fail.", 503, "Service Unavailable"));
 		}
 
-		if (encoder.state == Encoder::ENCODER_STAT_OPENED) {
+		if (encoder->state == Encoder::ENCODER_STAT_OPENED) {
 			std::string response = header.build_response((Mpeg*) source);
 			if (response == "") {
 				throw(http_trap("response build fail.", 503, "Service Unavailable"));
@@ -144,15 +153,15 @@ int main(int argc, char **argv)
 			}
 
 			if (source->is_initialized()) {
-				if (!encoder.ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
+				if (!encoder->ioctl(Encoder::IOCTL_SET_VPID, video_pid)) {
 					throw(http_trap("video pid setting fail.", 503, "Service Unavailable"));
 				}
-				if (!encoder.ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
+				if (!encoder->ioctl(Encoder::IOCTL_SET_APID, audio_pid)) {
 					throw(http_trap("audio pid setting fail.", 503, "Service Unavailable"));
 				}
 
 				if (pmt_pid != -1) {
-					if (!encoder.ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
+					if (!encoder->ioctl(Encoder::IOCTL_SET_PMTPID, pmt_pid)) {
 						throw(http_trap("pmt pid setting fail.", 503, "Service Unavailable"));
 					}
 				}
@@ -160,7 +169,7 @@ int main(int argc, char **argv)
 		}
 
 		is_terminated = false;
-		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, (void *)&thread_params);
+		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, 0);
 		if (source_thread_id < 0) {
 			is_terminated = true;
 			throw(http_trap("souce thread create fail.", 503, "Service Unavailable"));
@@ -172,12 +181,12 @@ int main(int argc, char **argv)
 				sleep(1);
 			}
 
-			if (!encoder.ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
+			if (!encoder->ioctl(Encoder::IOCTL_START_TRANSCODING, 0)) {
 				is_terminated = true;
 				throw(http_trap("start transcoding fail.", 503, "Service Unavailable"));
 			}
 			else {
-				stream_thread_id = pthread_create(&stream_thread_handle, 0, streaming_thread_main, (void *)&thread_params);
+				stream_thread_id = pthread_create(&stream_thread_handle, 0, streaming_thread_main, 0);
 				if (stream_thread_id < 0) {
 					is_terminated = true;
 					throw(http_trap("stream thread create fail.", 503, "Service Unavailable"));
@@ -219,28 +228,26 @@ void *streaming_thread_main(void *params)
 	if (is_terminated) return 0;
 
 	INFO("streaming thread start.");
-	Encoder *encoder = ((ThreadParams*) params)->encoder;
-	HttpHeader *header = ((ThreadParams*) params)->request;
 
 	try {
-		int poll_state, rc, wc;
-		struct pollfd poll_fd[2];
 		unsigned char buffer[BUFFFER_SIZE];
 
-		poll_fd[0].fd = encoder->get_fd();
-		poll_fd[0].events = POLLIN | POLLHUP;
-
 		while(!is_terminated) {
-			poll_state = poll(poll_fd, 1, 1000);
+			int rc = 0, wc = 0;
+			struct pollfd poll_fd[2];
+			poll_fd[0].fd = encoder->get_fd();
+			poll_fd[0].events = POLLIN | POLLHUP;
+
+			int poll_state = ::poll(poll_fd, 1, 1000);
 			if (poll_state == -1) {
 				throw(trap("poll error."));
 			}
-			else if (poll_state == 0) {
-				continue;
-			}
 			if (poll_fd[0].revents & POLLIN) {
 				rc = wc = 0;
-				rc = read(encoder->get_fd(), buffer, BUFFFER_SIZE - 1);
+				rc = ::read(encoder->get_fd(), buffer, BUFFFER_SIZE - 1);
+
+				//DEBUG("%d bytes read..", rc);
+
 				if (rc <= 0) {
 					break;
 				}
@@ -249,9 +256,7 @@ void *streaming_thread_main(void *params)
 					if (wc < rc) {
 						//DEBUG("need rewrite.. remain (%d)", rc - wc);
 						int retry_wc = 0;
-						for (int remain_len = rc - wc; rc != wc; remain_len -= retry_wc) {
-							poll_fd[0].revents = 0;
-
+						for (int remain_len = rc - wc; (rc != wc) && (!is_terminated); remain_len -= retry_wc) {
 							retry_wc = streaming_write((const char*) (buffer + rc - remain_len), remain_len);
 							wc += retry_wc;
 						}
@@ -259,8 +264,7 @@ void *streaming_thread_main(void *params)
 					}
 				}
 			}
-			else if (poll_fd[0].revents & POLLHUP)
-			{
+			else if (poll_fd[0].revents & POLLHUP) {
 				if (encoder->state == Encoder::ENCODER_STAT_STARTED) {
 					DEBUG("stop transcoding..");
 					encoder->ioctl(Encoder::IOCTL_STOP_TRANSCODING, 0);
@@ -270,15 +274,10 @@ void *streaming_thread_main(void *params)
 		}
 	}
 	catch (const trap &e) {
-		ERROR("%s %s (%d)", e.what(), strerror(errno), errno);
+		ERROR("%s %s (%d)", e.what(), ::strerror(errno), errno);
 	}
 	is_terminated = true;
 	INFO("streaming thread stop.");
-
-	if (encoder->state == Encoder::ENCODER_STAT_STARTED) {
-		DEBUG("stop transcoding..");
-		encoder->ioctl(Encoder::IOCTL_STOP_TRANSCODING, 0);
-	}
 
 	pthread_exit(0);
 
@@ -286,70 +285,58 @@ void *streaming_thread_main(void *params)
 }
 //----------------------------------------------------------------------
 
-void *source_thread_main(void *params)
+void *source_thread_main(void* params)
 {
-	Source *source = ((ThreadParams*) params)->source;
-	Encoder *encoder = ((ThreadParams*) params)->encoder;
-	HttpHeader *header = ((ThreadParams*) params)->request;
+	unsigned char buffer[BUFFFER_SIZE];
 
 	INFO("source thread start.");
 
 	try {
-		int poll_state, rc, wc;
-		struct pollfd poll_fd[2];
-		unsigned char buffer[BUFFFER_SIZE];
-
-		poll_fd[0].fd = encoder->get_fd();
-		poll_fd[0].events = POLLOUT;
-
-		poll_fd[1].fd = source->get_fd();
-		poll_fd[1].events = POLLIN;
-
 		while(!is_terminated) {
-			poll_state = poll(poll_fd, 2, 1000);
+			int rc = 0, wc = 0;
+			struct pollfd poll_fds[2] = {0};
+			poll_fds[0].fd = encoder->get_fd();
+			poll_fds[0].events = POLLOUT;
+
+			int poll_state = poll(poll_fds, 1, 1000);
 			if (poll_state == -1) {
 				throw(trap("poll error."));
 			}
-			else if (poll_state == 0) {
-				continue;
-			}
+			if (poll_fds[0].revents & POLLOUT) {
+				rc =::read(source->get_fd(), buffer, BUFFFER_SIZE - 1);
+				if (!rc) {
+					break;
+				}
+				wc = write(encoder->get_fd(), buffer, rc);
+				if (wc != rc) {
+					int retry_wc = 0;
+					for (int remain_len = rc - wc; (rc != wc) && (!is_terminated); remain_len -= retry_wc) {
+						struct pollfd retry_poll_fds[2] = {0};
+						retry_poll_fds[0].fd = encoder->get_fd();
+						retry_poll_fds[0].events = POLLOUT;
 
-			if (poll_fd[0].revents & POLLOUT) {
-				rc = wc = 0;
-				if (poll_fd[1].revents & POLLIN) {
-					rc = read(source->get_fd(), buffer, BUFFFER_SIZE - 1);
-					if (rc == 0) {
-						break;
-					}
-					else if (rc > 0) {
-						wc = write(encoder->get_fd(), buffer, rc);
-						//DEBUG("write : %d", wc);
-						if (wc < rc) {
-							//DEBUG("need rewrite.. remain (%d)", rc - wc);
-							int retry_wc = 0;
-							for (int remain_len = rc - wc; rc != wc; remain_len -= retry_wc) {
-								poll_fd[0].revents = 0;
-
-								poll_state = poll(poll_fd, 1, 1000);
-								if (poll_fd[0].revents & POLLOUT) {
-									retry_wc = write(encoder->get_fd(), (buffer + rc - remain_len), remain_len);
-									wc += retry_wc;
-								}
-							}
-							LOG("re-write result : %d - %d", wc, rc);
-							usleep(500000);
+						int retry_poll_state = poll(retry_poll_fds, 1, 1000);
+						if (retry_poll_state == -1) {
+							throw(trap("poll error."));
 						}
+
+						if (retry_poll_fds[0].revents & POLLOUT) {
+							retry_wc = ::write(encoder->get_fd(), (buffer + rc - remain_len), remain_len);
+							wc += retry_wc;
+						}
+						LOG("re-write result : %d - %d", wc, rc);
+						::usleep(500000);
 					}
 				}
 			}
 		}
 	}
 	catch (const trap &e) {
-		ERROR("%s %s (%d)", e.what(), strerror(errno), errno);
+		ERROR("%s %s (%d)", e.what(), ::strerror(errno), errno);
 	}
 	INFO("source thread stop.");
 
-	pthread_exit(0);
+    pthread_exit(0);
 
 	return 0;
 }
@@ -359,6 +346,7 @@ void signal_handler(int sig_no)
 {
 	INFO("signal no : %d", sig_no);
 	is_terminated = true;
+	cbexit();
 }
 //----------------------------------------------------------------------
 
