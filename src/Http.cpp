@@ -171,16 +171,24 @@ std::string HttpHeader::build_response(Mpeg *source)
 }
 //----------------------------------------------------------------------
 
+bool terminated();
 std::string HttpHeader::read_request()
 {
 	std::string request = "";
 	while (true) {
 		char buffer[128] = {0};
-		fgets(buffer, 127, stdin);
-
+		if (!read (0, buffer, 128)) {
+			break;
+		}
 		request += buffer;
 		if(request.find("\r\n\r\n") != string::npos)
 			break;
+
+		if (terminated()) {
+			request = "";
+			break;
+		}
+		usleep(0);
 	}
 	return request;
 }

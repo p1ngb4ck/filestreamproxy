@@ -22,6 +22,7 @@
 using namespace std;
 //-------------------------------------------------------------------------------
 
+bool terminated();
 std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 {
 	if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0)
@@ -58,6 +59,10 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 				break;
 			}
 			response += buffer;
+		}
+		if (terminated()) {
+			response = "";
+			break;
 		}
 	}
 	return response;

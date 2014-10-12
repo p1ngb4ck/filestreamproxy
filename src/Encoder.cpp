@@ -109,9 +109,13 @@ bool Encoder::encoder_open()
 }
 //----------------------------------------------------------------------
 
+bool terminated();
 bool Encoder::retry_open(int retry_count, int sleep_time)
 {
 	for (int i = 0; i < retry_count; ++i) {
+		if (terminated()) {
+			break;
+		}
 		if (encoder_open()) {
 			DEBUG("encoder-%d open success..", encoder_id);
 			return true;

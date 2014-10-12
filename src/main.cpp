@@ -44,6 +44,12 @@ static int source_thread_id, stream_thread_id;
 static pthread_t source_thread_handle, stream_thread_handle;
 //----------------------------------------------------------------------
 
+bool terminated()
+{
+	return is_terminated;
+}
+//----------------------------------------------------------------------
+
 void cbexit()
 {
 	INFO("release resource start");
@@ -69,10 +75,14 @@ int main(int argc, char **argv)
 			show_help();
 		exit(0);
 	}
-	Logger::instance()->init("/tmp/transtreamproxy", Logger::WARNING);
+	Logger::instance()->init("/tmp/transtreamproxy", Logger::LOG);
 
+	::signal(SIGINT,  signal_handler);
+	::signal(SIGTERM, signal_handler);
+	::signal(SIGKILL, signal_handler);
 	::atexit(cbexit);
-	::signal(SIGINT, signal_handler);
+
+	is_terminated = false;
 
 	HttpHeader header;
 	std::string req = HttpHeader::read_request();
@@ -168,7 +178,6 @@ int main(int argc, char **argv)
 			}
 		}
 
-		is_terminated = false;
 		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, 0);
 		if (source_thread_id < 0) {
 			is_terminated = true;
@@ -193,6 +202,7 @@ int main(int argc, char **argv)
 				}
 			}
 		}
+
 		pthread_join(stream_thread_handle, 0);
 		is_terminated = true;
 
@@ -257,6 +267,9 @@ void *streaming_thread_main(void *params)
 						//DEBUG("need rewrite.. remain (%d)", rc - wc);
 						int retry_wc = 0;
 						for (int remain_len = rc - wc; (rc != wc) && (!is_terminated); remain_len -= retry_wc) {
+							if (is_terminated) {
+								throw(trap("terminated"));
+							}
 							retry_wc = streaming_write((const char*) (buffer + rc - remain_len), remain_len);
 							wc += retry_wc;
 						}
@@ -271,6 +284,7 @@ void *streaming_thread_main(void *params)
 				}
 				break;
 			}
+			usleep(0);
 		}
 	}
 	catch (const trap &e) {
@@ -311,6 +325,9 @@ void *source_thread_main(void* params)
 				if (wc != rc) {
 					int retry_wc = 0;
 					for (int remain_len = rc - wc; (rc != wc) && (!is_terminated); remain_len -= retry_wc) {
+						if (is_terminated) {
+							throw(trap("terminated"));
+						}
 						struct pollfd retry_poll_fds[2] = {0};
 						retry_poll_fds[0].fd = encoder->get_fd();
 						retry_poll_fds[0].events = POLLOUT;
@@ -329,6 +346,7 @@ void *source_thread_main(void* params)
 					}
 				}
 			}
+			usleep(0);
 		}
 	}
 	catch (const trap &e) {
