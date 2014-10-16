@@ -15,6 +15,9 @@
 
 #include <string>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include "Util.h"
 #include "Logger.h"
 
@@ -42,6 +45,11 @@ static Encoder *encoder = 0;
 static bool is_terminated = true;
 static int source_thread_id, stream_thread_id;
 static pthread_t source_thread_handle, stream_thread_handle;
+
+#define TSP_CHECKER_TEMPLETE "/tmp/tsp_status.%d"
+
+pid_t tsp_pid = 0, checker_pid = 0;
+unsigned long last_updated_time = 0;
 //----------------------------------------------------------------------
 
 bool terminated()
@@ -55,6 +63,14 @@ void cbexit()
 	INFO("release resource start");
 	if (encoder) { delete encoder; encoder = 0; }
 	if (source)  { delete source; source = 0; }
+
+	char checker_filename[255] = {0};
+	if (checker_pid) {
+		::sprintf(checker_filename, TSP_CHECKER_TEMPLETE, checker_pid);
+		if (::access(checker_filename, F_OK) == 0) {
+			::unlink(checker_filename);
+		}
+	}
 	INFO("release resource finish");
 }
 //----------------------------------------------------------------------
@@ -68,6 +84,82 @@ inline int streaming_write(const char *buffer, size_t buffer_len, bool enable_lo
 }
 //----------------------------------------------------------------------
 
+
+#define DD_LOG(X,...) { \
+		char log_message[128] = {0};\
+		sprintf(log_message, "echo \""X"\" >> /tmp/test.log", ##__VA_ARGS__);\
+		system(log_message);\
+	}
+//----------------------------------------------------------------------
+
+int send_signal(pid_t pid, int signal)
+{
+	char process_path[255] = {0};
+	sprintf(process_path, "/proc/%d", pid);
+
+	if (access(process_path, F_OK) == 0) {
+		kill(pid, signal);
+		DD_LOG("------------>> run kill-pid : %ld -> %ld (%d)", getpid(), pid, signal);
+	}
+	return 0;
+}
+//----------------------------------------------------------------------
+
+void signal_handler_checker(int sig_no)
+{
+	is_terminated = true;
+}
+//----------------------------------------------------------------------
+
+int tsp_checker(pid_t pid)
+{
+	char check_filename[255] = {0};
+	sprintf(check_filename, TSP_CHECKER_TEMPLETE, ::getpid());
+
+	int timebase_count = 0, exit_count = 0;
+	while(!is_terminated) {
+		if (timebase_count != 10) {
+			timebase_count++;
+		}
+		else {
+			if (access(check_filename, F_OK) != 0) {
+				send_signal(tsp_pid, SIGUSR2);
+				DD_LOG("stop 1");
+				break;
+			}
+		}
+
+		struct stat sb;
+		stat(check_filename, &sb);
+
+		if (last_updated_time == sb.st_ctime && timebase_count == 10) {
+			if (exit_count > 2) {
+				send_signal(tsp_pid, SIGUSR2);
+				DD_LOG("stop 2 :: %ld == %ld", last_updated_time, sb.st_ctime);
+				break;
+			}
+			exit_count++;
+			sleep(1);
+			continue;
+		}
+		exit_count = 0;
+		last_updated_time = sb.st_ctime;
+		sleep(1);
+	}
+	unlink(check_filename);
+
+	DD_LOG("kill-pid : %ld", tsp_pid);
+
+	if (exit_count > 2) {
+		send_signal(tsp_pid, SIGKILL);
+	}
+
+	usleep(500000);
+
+	return 0;
+}
+//----------------------------------------------------------------------
+
 int main(int argc, char **argv)
 {
 	if (argc > 1) {
@@ -75,14 +167,26 @@ int main(int argc, char **argv)
 			show_help();
 		exit(0);
 	}
-	Logger::instance()->init("/tmp/transtreamproxy", Logger::LOG);
+	tsp_pid = ::getpid();
 
-	::signal(SIGINT,  signal_handler);
-	::signal(SIGTERM, signal_handler);
-	::signal(SIGKILL, signal_handler);
-	::atexit(cbexit);
+	signal(SIGUSR1, signal_handler_checker);
+
+	Logger::instance()->init("/tmp/transtreamproxy", Logger::LOG);
+	signal(SIGINT,  signal_handler);
+	signal(SIGSEGV, signal_handler);
+	signal(SIGUSR2, signal_handler);
+
+	atexit(cbexit);
 
 	is_terminated = false;
+	checker_pid = ::fork();
+	if (checker_pid == 0) {
+		tsp_checker(checker_pid);
+		exit(0);
+	}
+	char update_status_command[255] = {0};
+	sprintf(update_status_command, "touch "TSP_CHECKER_TEMPLETE, checker_pid);
+	system(update_status_command);
 
 	HttpHeader header;
 	std::string req = HttpHeader::read_request();
@@ -146,7 +250,7 @@ int main(int argc, char **argv)
 		}
 
 		encoder = new Encoder();
-		if (!encoder->retry_open(2, 3)) {
+		if (!encoder->retry_open(1, 3)) {
 			throw(http_trap("encoder open fail.", 503, "Service Unavailable"));
 		}
 
@@ -178,6 +282,9 @@ int main(int argc, char **argv)
 			}
 		}
 
+		if (header.type == HttpHeader::TRANSCODING_LIVE) {
+			((Demuxer*)source)->open();
+		}
 		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, 0);
 		if (source_thread_id < 0) {
 			is_terminated = true;
@@ -203,6 +310,12 @@ int main(int argc, char **argv)
 			}
 		}
 
+		while(!is_terminated) {
+			system(update_status_command);
+			sleep(1);
+		}
+
+		send_signal(checker_pid, SIGUSR1);
 		pthread_join(stream_thread_handle, 0);
 		is_terminated = true;
 
@@ -221,14 +334,17 @@ int main(int argc, char **argv)
 			error = HttpUtil::http_error(e.http_error, e.http_header);
 		}
 		streaming_write(error.c_str(), error.length(), true);
+		send_signal(checker_pid, SIGUSR1);
 		exit(-1);
 	}
 	catch (...) {
 		ERROR("unknown exception...");
 		std::string error = HttpUtil::http_error(400, "Bad request");
 		streaming_write(error.c_str(), error.length(), true);
+		send_signal(checker_pid, SIGUSR1);
 		exit(-1);
 	}
+	send_signal(checker_pid, SIGUSR1);
 	return 0;
 }
 //----------------------------------------------------------------------
@@ -362,9 +478,13 @@ void *source_thread_main(void* params)
 
 void signal_handler(int sig_no)
 {
-	INFO("signal no : %d", sig_no);
+	ERROR("signal no : %s (%d)", strsignal(sig_no), sig_no);
 	is_terminated = true;
 	cbexit();
+
+	if (sig_no == SIGSEGV) {
+		exit(0);
+	}
 }
 //----------------------------------------------------------------------
 

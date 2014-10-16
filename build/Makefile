@@ -20,8 +20,8 @@ TOP=$(PWD)/..
 OBJ=./obj/
 
 ifeq ($(CROSS),YES)
-SYSROOT=$(OETOP)/$(MODEL)/build/tmp/staging/mipsel-oe-linux
-TOOLCHAIN=$(OETOP)/$(MODEL)/build/tmp/cross/mipsel/bin/mipsel-oe-linux-
+SYSROOT=$(OETOP)/build/$(MODEL)/tmp/sysroots/$(MODEL)
+TOOLCHAIN=$(OETOP)/build/$(MODEL)/tmp/sysroots/i686-linux/usr/bin/mips32el-oe-linux/mipsel-oe-linux-
 endif
 
 RM=rm -Rf

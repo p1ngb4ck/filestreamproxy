@@ -185,6 +185,26 @@ bool Demuxer::parse_webif_response(std::string& response, std::vector<unsigned l
 }
 //-------------------------------------------------------------------------------
 
+void Demuxer::open() throw(http_trap)
+{
+	if (demux_id < 0) {
+		throw(http_trap("demux id is not set!!", 503, "Service Unavailable"));
+	}
+	std::string demuxpath = "/dev/dvb/adapter0/demux" + Util::ultostr(demux_id);
+	if ((fd = ::open(demuxpath.c_str(), O_RDWR | O_NONBLOCK)) < 0) {
+		throw(http_trap(std::string("demux open fail : ") + demuxpath, 503, "Service Unavailable"));
+	}
+	INFO("demux open success : %s", demuxpath.c_str());
+
+	try {
+		set_filter(new_pids);
+	}
+	catch (const trap &e) {
+		throw(http_trap(e.what(), 503, "Service Unavailable"));
+	}
+}
+//-------------------------------------------------------------------------------
+
 Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 {
 	demux_id = pat_pid = fd = sock = -1;
@@ -210,22 +230,9 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 		throw(http_trap("webif whthentication fail.", 401, "Unauthorized"));
 	}
 
-	std::vector<unsigned long> new_pids;
+	new_pids.clear();
 	if (!parse_webif_response(webif_response, new_pids))
 		throw(http_trap("webif response parsing fail.", 503, "Service Unavailable"));
-
-	std::string demuxpath = "/dev/dvb/adapter0/demux" + Util::ultostr(demux_id);
-	if ((fd = open(demuxpath.c_str(), O_RDWR | O_NONBLOCK)) < 0) {
-		throw(http_trap(std::string("demux open fail : ") + demuxpath, 503, "Service Unavailable"));
-	}
-	INFO("demux open success : %s", demuxpath.c_str());
-
-	try {
-		set_filter(new_pids);
-	}
-	catch (const trap &e) {
-		throw(http_trap(e.what(), 503, "Service Unavailable"));
-	}
 }
 //-------------------------------------------------------------------------------
 
