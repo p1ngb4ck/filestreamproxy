@@ -24,3 +24,5 @@ stamp-h1
 config.h.in~
 config.mk
 config.mk.bak
+example/bin
+example/obj

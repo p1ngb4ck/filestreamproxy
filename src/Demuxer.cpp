@@ -238,6 +238,27 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 
 Demuxer::~Demuxer() throw()
 {
+	std::vector<unsigned long>::iterator iter = pids.begin();
+	for (; iter != pids.end(); ++iter) {
+		unsigned long pid = *iter;
+
+		while(pid != -1) {
+#if HAVE_DVB_API_VERSION > 3
+			__u16 p = pid;
+			if (::ioctl(fd, DMX_REMOVE_PID, &p) < 0) {
+#else
+			if (::ioctl(fd, DMX_REMOVE_PID, pid) < 0) {
+#endif
+				WARNING("DMX_REMOVE_PID");
+				if (errno == EAGAIN || errno == EINTR) {
+					DEBUG("retry DMX_REMOVE_PID");
+					continue;
+				}
+			}
+			break;
+		}
+	}
+
 	if (fd != -1) close(fd);
 	if (sock != -1) close(sock);
 

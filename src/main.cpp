@@ -87,7 +87,7 @@ inline int streaming_write(const char *buffer, size_t buffer_len, bool enable_lo
 
 #define DD_LOG(X,...) { \
 		char log_message[128] = {0};\
-		sprintf(log_message, "echo \""X"\" >> /tmp/test.log", ##__VA_ARGS__);\
+		sprintf(log_message, "echo \""X"\" > /tmp/tsp_checker.log", ##__VA_ARGS__);\
 		system(log_message);\
 	}
 //----------------------------------------------------------------------
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
 
 	signal(SIGUSR1, signal_handler_checker);
 
-	Logger::instance()->init("/tmp/transtreamproxy", Logger::LOG);
+	Logger::instance()->init("/tmp/transtreamproxy", Logger::ERROR);
 	signal(SIGINT,  signal_handler);
 	signal(SIGSEGV, signal_handler);
 	signal(SIGUSR2, signal_handler);
@@ -284,6 +284,9 @@ int main(int argc, char **argv)
 
 		if (header.type == HttpHeader::TRANSCODING_LIVE) {
 			((Demuxer*)source)->open();
+			if (((Demuxer*)source)->get_fd() < 0) {
+				throw(http_trap("demux open fail!!", 503, "Service Unavailable"));
+			}
 		}
 		source_thread_id = pthread_create(&source_thread_handle, 0, source_thread_main, 0);
 		if (source_thread_id < 0) {
