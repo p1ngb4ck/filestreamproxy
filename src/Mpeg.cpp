@@ -680,7 +680,7 @@ Mpeg::Mpeg(std::string filename, bool request_time_seek) throw (trap)
 			audio_pid = apid;
 			m_is_initialized = true;
 
-			find_pmt();
+			/*find_pmt();*/
 			return;
 		}
 	}
