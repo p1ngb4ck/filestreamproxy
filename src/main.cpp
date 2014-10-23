@@ -84,7 +84,6 @@ inline int streaming_write(const char *buffer, size_t buffer_len, bool enable_lo
 }
 //----------------------------------------------------------------------
 
-
 #define DD_LOG(X,...) { \
 		char log_message[128] = {0};\
 		sprintf(log_message, "echo \""X"\" > /tmp/tsp_checker.log", ##__VA_ARGS__);\
@@ -99,7 +98,7 @@ int send_signal(pid_t pid, int signal)
 
 	if (access(process_path, F_OK) == 0) {
 		kill(pid, signal);
-		DD_LOG("------------>> run kill-pid : %ld -> %ld (%d)", getpid(), pid, signal);
+		DD_LOG("  >> run kill-pid : %ld -> %ld (%d)", getpid(), pid, signal);
 	}
 	return 0;
 }
@@ -114,7 +113,8 @@ void signal_handler_checker(int sig_no)
 int tsp_checker(pid_t pid)
 {
 	char check_filename[255] = {0};
-	sprintf(check_filename, TSP_CHECKER_TEMPLETE, ::getpid());
+	sleep(1);
+	sprintf(check_filename, TSP_CHECKER_TEMPLETE, ::getppid());
 
 	int timebase_count = 0, exit_count = 0;
 	while(!is_terminated) {
@@ -124,7 +124,7 @@ int tsp_checker(pid_t pid)
 		else {
 			if (access(check_filename, F_OK) != 0) {
 				send_signal(tsp_pid, SIGUSR2);
-				DD_LOG("stop 1");
+				DD_LOG("no found %s, %d", check_filename, timebase_count);
 				break;
 			}
 		}
@@ -135,7 +135,7 @@ int tsp_checker(pid_t pid)
 		if (last_updated_time == sb.st_ctime && timebase_count == 10) {
 			if (exit_count > 2) {
 				send_signal(tsp_pid, SIGUSR2);
-				DD_LOG("stop 2 :: %ld == %ld", last_updated_time, sb.st_ctime);
+				DD_LOG("%ld == %ld", last_updated_time, sb.st_ctime);
 				break;
 			}
 			exit_count++;
@@ -148,13 +148,11 @@ int tsp_checker(pid_t pid)
 	}
 	unlink(check_filename);
 
-	DD_LOG("kill-pid : %ld", tsp_pid);
+	DD_LOG("kill (%ld)", tsp_pid);
 
-	if (exit_count > 2) {
-		send_signal(tsp_pid, SIGKILL);
-	}
-
-	usleep(500000);
+	sleep(3);
+	send_signal(tsp_pid, SIGKILL);
+	sleep(2);
 
 	return 0;
 }
@@ -179,13 +177,9 @@ int main(int argc, char **argv)
 	atexit(cbexit);
 
 	is_terminated = false;
-	checker_pid = ::fork();
-	if (checker_pid == 0) {
-		tsp_checker(checker_pid);
-		exit(0);
-	}
+
 	char update_status_command[255] = {0};
-	sprintf(update_status_command, "touch "TSP_CHECKER_TEMPLETE, checker_pid);
+	sprintf(update_status_command, "touch "TSP_CHECKER_TEMPLETE, tsp_pid);
 	system(update_status_command);
 
 	HttpHeader header;
@@ -224,6 +218,12 @@ int main(int argc, char **argv)
 			break;
 		case HttpHeader::TRANSCODING_LIVE:
 			try {
+				checker_pid = ::fork();
+				if (checker_pid == 0) {
+					tsp_checker(checker_pid);
+					exit(0);
+				}
+
 				Demuxer *dmx = new Demuxer(&header);
 				pmt_pid   = dmx->pmt_pid;
 				video_pid = dmx->video_pid;
@@ -250,7 +250,11 @@ int main(int argc, char **argv)
 		}
 
 		encoder = new Encoder();
-		if (!encoder->retry_open(1, 3)) {
+		int encoder_retry_max_count = 1;
+		if (header.type == HttpHeader::TRANSCODING_FILE) {
+			encoder_retry_max_count = 2;
+		}
+		if (!encoder->retry_open(encoder_retry_max_count, 3)) {
 			throw(http_trap("encoder open fail.", 503, "Service Unavailable"));
 		}
 
@@ -295,7 +299,6 @@ int main(int argc, char **argv)
 		}
 		else {
 			pthread_detach(source_thread_handle);
-
 			if (!source->is_initialized()) {
 				sleep(1);
 			}
@@ -501,3 +504,4 @@ void show_help()
 	printf(" ex > echo \"4\" > /tmp/.debug_on\n");
 }
 //----------------------------------------------------------------------
+
