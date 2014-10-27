@@ -67,6 +67,8 @@ public:
 	int  get_fd();
 	bool ioctl(int cmd, int value);
 	bool retry_open(int retry_count, int sleep_time);
+
+	void encoder_close();
 };
 //----------------------------------------------------------------------
 

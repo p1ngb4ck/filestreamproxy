@@ -80,6 +80,12 @@ Encoder::Encoder() throw(trap)
 Encoder::~Encoder()
 {
 	Post();
+	encoder_close();
+}
+//----------------------------------------------------------------------
+
+void Encoder::encoder_close()
+{
 	if (fd != -1) {
 		if (state == ENCODER_STAT_STARTED) {
 			DEBUG("stop transcoding..");
@@ -103,15 +109,21 @@ bool Encoder::encoder_open()
 }
 //----------------------------------------------------------------------
 
+bool terminated();
 bool Encoder::retry_open(int retry_count, int sleep_time)
 {
 	for (int i = 0; i < retry_count; ++i) {
+		if (terminated()) {
+			break;
+		}
 		if (encoder_open()) {
 			DEBUG("encoder-%d open success..", encoder_id);
 			return true;
 		}
 		WARNING("encoder%d open fail, retry count : %d/%d", encoder_id, i, retry_count);
-		sleep(sleep_time);
+		if (retry_count > 1) {
+			sleep(sleep_time);
+		}
 	}
 	ERROR("encoder open fail : %s (%d)", strerror(errno), errno);
 	return false;

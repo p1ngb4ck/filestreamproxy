@@ -138,8 +138,9 @@ std::vector<int> Util::find_process_by_name(std::string name, int mypid)
 
 void Util::kill_process(int pid)
 {
-	int result = kill(pid, SIGINT);
+	int result = 0;
+
+	result = kill(pid, SIGINT);
 	DEBUG("SEND SIGINT to %d, result : %d", pid, result);
-	//sleep(1);
 }
 //----------------------------------------------------------------------

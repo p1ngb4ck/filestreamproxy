@@ -37,18 +37,6 @@ static const char* LOG_LV_STR[] = {
 #endif
 //----------------------------------------------------------------------
 
-char* timestamp(const char* aFormat)
-{
-	time_t t;
-	time(&t);
-
-	struct tm* m = localtime(&t);
-	static char sz_timestamp[32] = {0};
-	strftime(sz_timestamp, sizeof(sz_timestamp), aFormat, m);
-	return sz_timestamp;
-}
-//----------------------------------------------------------------------
-
 Logger::Logger()
 	: mLogLevel(0), mLogHandle(0)
 {
@@ -106,9 +94,7 @@ bool Logger::init(const char* aName, int aLogLevel, bool aWithTimestamp)
 		return true;
 	}
 	char path[256] = {0};
-	if (aWithTimestamp)
-		sprintf(path, "%s_%s.log", aName, timestamp("%Y%m%d"));
-	else sprintf(path, "%s.log", aName);
+	sprintf(path, "%s.log", aName);
 	if (!(mLogHandle = fopen(path, "a+"))) {
 		mLogHandle = 0;
 //		printf("fail to open logger [%s].", path);
@@ -197,8 +183,7 @@ void Logger::log(int aLogLevel, const char* aFormat, ...)
 	va_start(args, aFormat);
 	vsnprintf(log_data_buffer, MAX_PRINT_LEN-1, aFormat, args);
 	va_end(args);
-
-	fprintf(mLogHandle, "[%s]%s[%d] %s\n", timestamp(DEFAULT_TIMESTAMP_FORMAT), LOG_LV_STR[aLogLevel], mPid, log_data_buffer);
+	fprintf(mLogHandle, "%s[%d] %s\n", LOG_LV_STR[aLogLevel], mPid, log_data_buffer);
 	fflush(mLogHandle);
 #endif
 }

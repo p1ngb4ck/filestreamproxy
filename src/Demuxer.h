@@ -32,6 +32,7 @@ private:
 	int demux_id;
 	int pat_pid;
 	std::vector<unsigned long> pids;
+	std::vector<unsigned long> new_pids;
 
 protected:
 	std::string webif_reauest(std::string request) throw(http_trap);
@@ -42,7 +43,10 @@ protected:
 public:
 	Demuxer(HttpHeader *header) throw(http_trap);
 	virtual ~Demuxer() throw();
+	void open() throw(http_trap);
+
 	int get_fd() const throw();
+	bool is_initialized() { return true; }
 };
 //----------------------------------------------------------------------
 

@@ -6,7 +6,7 @@
 # Description :
 #============================================================================
 
--include config.mk
+-include ../build/config.mk
 
 ifeq ($(MODEL),)
 $(error config.mk is not set. please run script.config before make.)
@@ -14,7 +14,6 @@ endif
 
 MAJOR = 3
 MINOR = 0
-PROJECT = transtreamproxy
 
 TOP=$(PWD)/..
 OBJ=./obj/
@@ -39,30 +38,45 @@ CFLAGS += -D_MAJOR=$(MAJOR) -D_MINOR=$(MINOR) -D_GNU_SOURCE -D_FILE_OFFSET_BITS=
 CFLAGS += -I$(SYSROOT)/usr/include
 LDFLAGS += -L$(SYSROOT)/usr/lib -lpthread -lrt
 
-SRCS = $(shell find ../src/ -name "*.cpp")
+SRCS = ../src/3rdparty/trap.cpp
+SRCS+= ../src/Demuxer.cpp
+SRCS+= ../src/Encoder.cpp
+SRCS+= ../src/Http.cpp
+SRCS+= ../src/Logger.cpp
+SRCS+= ../src/Mpeg.cpp
+SRCS+= ../src/UriDecoder.cpp
+SRCS+= ../src/Util.cpp
+
 OBJS = $(SRCS:.cpp=.o)
 CFLAGS += $(addprefix -I, $(shell find ../src/ -type d))
 
 .SUFFIXES : .cpp .o
 .PHONY : all clean install .showinfo .prepare $(PROJECT)
 
-.cpp.o: 
-	$(CXX) -c $(CFLAGS) -o $(OBJ)$(notdir $@) $<
+.cpp.o:
+	@echo "Compile... ["$<"]"
+	@$(CXX) -c $(CFLAGS) -o $(OBJ)$(notdir $@) $<
 
-all: .showinfo .prepare $(PROJECT)
+all: .showinfo .prepare $(OBJS) stress_full
 
-$(PROJECT):$(OBJS)
-	$(CXX) -o $@ $(addprefix $(OBJ), $(notdir $(OBJS))) $(LDFLAGS)
-	$(STRIP) $@
+demux_loop: .prepare
+	@echo "Link... ["$@"]"
+	@$(CXX) $(CFLAGS) -o bin/$@ $@.cpp $(addprefix $(OBJ), $(notdir $(OBJS))) $(LDFLAGS)
 
-install:
-	$(UPLOAD) $(UPIP) . $(PROJECT) $(UPDIR)
+stress_full: .prepare
+	@echo "Link... ["$@"]"
+	@g++ -o bin/$@ $@.cpp
+
+transcoding_file: .prepare
+	@echo "Link... ["$@"]"
+	@$(CXX) $(CFLAGS) -o bin/$@ $@.cpp $(LDFLAGS)
 
 clean:
-	$(RM) $(PROJECT) obj *.o *.a *.d *.log
+	$(RM) $(PROJECT) obj bin *.o *.a *.d *.log
 
 .prepare:
 	@if [ ! -e obj ]; then mkdir obj; fi
+	@if [ ! -e bin ]; then mkdir bin; fi
 
 .showinfo:
 	@echo "-----------------------------------------------------"
