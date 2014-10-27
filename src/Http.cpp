@@ -177,7 +177,7 @@ std::string HttpHeader::read_request()
 	std::string request = "";
 	while (true) {
 		char buffer[128] = {0};
-		if (!read (0, buffer, 128)) {
+		if (!read (0, buffer, 127)) {
 			break;
 		}
 		request += buffer;
