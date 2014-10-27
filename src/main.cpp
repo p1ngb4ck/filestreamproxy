@@ -65,8 +65,8 @@ void cbexit()
 	if (source)  { delete source; source = 0; }
 
 	char checker_filename[255] = {0};
-	if (checker_pid) {
-		::sprintf(checker_filename, TSP_CHECKER_TEMPLETE, checker_pid);
+	if (tsp_pid) {
+		::sprintf(checker_filename, TSP_CHECKER_TEMPLETE, tsp_pid);
 		if (::access(checker_filename, F_OK) == 0) {
 			::unlink(checker_filename);
 		}
@@ -179,8 +179,7 @@ int main(int argc, char **argv)
 	is_terminated = false;
 
 	char update_status_command[255] = {0};
-	sprintf(update_status_command, "touch "TSP_CHECKER_TEMPLETE, tsp_pid);
-	system(update_status_command);
+
 
 	HttpHeader header;
 	std::string req = HttpHeader::read_request();
@@ -223,6 +222,9 @@ int main(int argc, char **argv)
 					tsp_checker(checker_pid);
 					exit(0);
 				}
+
+				sprintf(update_status_command, "touch "TSP_CHECKER_TEMPLETE, tsp_pid);
+				system(update_status_command);
 
 				Demuxer *dmx = new Demuxer(&header);
 				pmt_pid   = dmx->pmt_pid;
