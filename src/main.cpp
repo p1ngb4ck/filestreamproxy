@@ -381,9 +381,9 @@ void *streaming_thread_main(void *params)
 				//DEBUG("%d bytes read..", rc);
 
 				if (rc <= 0) {
-					break;
+					continue;
 				}
-				else if (rc > 0) {
+				else {
 					wc = streaming_write((const char*) buffer, rc);
 					if (wc < rc) {
 						//DEBUG("need rewrite.. remain (%d)", rc - wc);
@@ -423,48 +423,54 @@ void *streaming_thread_main(void *params)
 
 void *source_thread_main(void* params)
 {
-	unsigned char buffer[BUFFFER_SIZE];
 
 	INFO("source thread start.");
 
 	try {
-		while(!is_terminated) {
-			int rc = 0, wc = 0;
-			struct pollfd poll_fds[2] = {0};
-			poll_fds[0].fd = encoder->get_fd();
-			poll_fds[0].events = POLLOUT;
+		int poll_state, rc, wc;
+		struct pollfd poll_fd_enc[1];
+		struct pollfd poll_fd_src[1];
+		unsigned char buffer[BUFFFER_SIZE];
 
-			int poll_state = poll(poll_fds, 1, 1000);
+		poll_fd_enc[0].fd = encoder->get_fd();
+		poll_fd_enc[0].events = POLLOUT;
+		poll_fd_src[0].fd = source->get_fd();
+		poll_fd_src[0].events = POLLIN;
+
+		while(!is_terminated) {
+			poll_state = poll(poll_fd_src, 1, 1000);
 			if (poll_state == -1) {
 				throw(trap("poll error."));
 			}
-			if (poll_fds[0].revents & POLLOUT) {
+			if (poll_fd_src[0].revents & POLLIN) {
 				rc =::read(source->get_fd(), buffer, BUFFFER_SIZE - 1);
-				if (!rc) {
-					break;
+				if (rc <= 0) {
+					 continue;
 				}
-				wc = write(encoder->get_fd(), buffer, rc);
-				if (wc != rc) {
-					int retry_wc = 0;
-					for (int remain_len = rc - wc; (rc != wc) && (!is_terminated); remain_len -= retry_wc) {
-						if (is_terminated) {
-							throw(trap("terminated"));
-						}
-						struct pollfd retry_poll_fds[2] = {0};
-						retry_poll_fds[0].fd = encoder->get_fd();
-						retry_poll_fds[0].events = POLLOUT;
+				else if (rc > 0) {
+					poll_fd_enc[0].revents = 0;
+					poll_state = poll(poll_fd_enc, 1, 1000);
+					if (poll_fd_enc[0].revents & POLLOUT) {
+						wc = write(encoder->get_fd(), buffer, rc);
+						if (wc < rc) {
+							int retry_wc = 0;
+							for (int remain_len = rc - wc; (rc != wc) && (!is_terminated); remain_len -= retry_wc) {
+								if (is_terminated) {
+									throw(trap("terminated"));
+								}
+								poll_fd_enc[0].revents = 0;
+								poll_state = poll(poll_fd_enc, 1, 1000);
+								if (poll_state == -1) {
+									throw(trap("poll error."));
+								}
 
-						int retry_poll_state = poll(retry_poll_fds, 1, 1000);
-						if (retry_poll_state == -1) {
-							throw(trap("poll error."));
+								if (poll_fd_enc[0].revents & POLLOUT) {
+									retry_wc = ::write(encoder->get_fd(), (buffer + rc - remain_len), remain_len);
+									wc += retry_wc;
+								}
+								LOG("re-write result : %d - %d", wc, rc);
+							}
 						}
-
-						if (retry_poll_fds[0].revents & POLLOUT) {
-							retry_wc = ::write(encoder->get_fd(), (buffer + rc - remain_len), remain_len);
-							wc += retry_wc;
-						}
-						LOG("re-write result : %d - %d", wc, rc);
-						::usleep(500000);
 					}
 				}
 			}
