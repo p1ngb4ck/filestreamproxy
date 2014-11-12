@@ -113,7 +113,7 @@ void signal_handler_checker(int sig_no)
 int tsp_checker(pid_t pid)
 {
 	char check_filename[255] = {0};
-	sleep(1);
+	
 	sprintf(check_filename, TSP_CHECKER_TEMPLETE, ::getppid());
 
 	int timebase_count = 0, exit_count = 0;
@@ -173,6 +173,7 @@ int main(int argc, char **argv)
 	signal(SIGINT,  signal_handler);
 	signal(SIGSEGV, signal_handler);
 	signal(SIGUSR2, signal_handler);
+	signal(SIGPIPE, signal_handler);
 
 	atexit(cbexit);
 
@@ -252,11 +253,8 @@ int main(int argc, char **argv)
 		}
 
 		encoder = new Encoder();
-		int encoder_retry_max_count = 1;
-		if (header.type == HttpHeader::TRANSCODING_FILE) {
-			encoder_retry_max_count = 2;
-		}
-		if (!encoder->retry_open(encoder_retry_max_count, 3)) {
+		
+		if (!encoder->retry_open(2, 3)) {
 			throw(http_trap("encoder open fail.", 503, "Service Unavailable"));
 		}
 
@@ -494,11 +492,15 @@ void signal_handler(int sig_no)
 {
 	ERROR("signal no : %s (%d)", strsignal(sig_no), sig_no);
 	is_terminated = true;
-	cbexit();
+	if (sig_no == SIGPIPE){
+		sleep(3);
+	}
 
 	if (sig_no == SIGSEGV) {
 		exit(0);
 	}
+	
+	cbexit();
 }
 //----------------------------------------------------------------------
 
