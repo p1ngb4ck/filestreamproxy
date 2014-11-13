@@ -18,6 +18,8 @@
 #include "Logger.h"
 #include "Encoder.h"
 
+bool terminated();
+
 using namespace std;
 //----------------------------------------------------------------------
 
@@ -109,10 +111,9 @@ bool Encoder::encoder_open()
 }
 //----------------------------------------------------------------------
 
-bool terminated();
 bool Encoder::retry_open(int retry_count, int sleep_time)
 {
-	for (int i = 0; i < retry_count; ++i) {
+	for (int i = 0; i < retry_count*10; ++i) {
 		if (terminated()) {
 			break;
 		}
@@ -121,7 +122,7 @@ bool Encoder::retry_open(int retry_count, int sleep_time)
 			return true;
 		}
 		WARNING("encoder%d open fail, retry count : %d/%d", encoder_id, i, retry_count);
-		sleep(sleep_time);
+		usleep(100*1000); /*wait sleep_time ms*/
 
 	}
 	ERROR("encoder open fail : %s (%d)", strerror(errno), errno);

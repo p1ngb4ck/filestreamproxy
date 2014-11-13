@@ -19,10 +19,11 @@
 #include "Logger.h"
 #include "Demuxer.h"
 
+bool terminated();
+
 using namespace std;
 //-------------------------------------------------------------------------------
 
-bool terminated();
 std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 {
 	if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0)
@@ -224,17 +225,16 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 	webif_request += "\r\n";
 
 	std::string webif_response = "";
-	
-	if (webif_response == "") {
-		for(int retry_count = 0; retry_count < 32; retry_count++) {
-			webif_response = webif_reauest(webif_request);
-			if(webif_response.length()){
-				if(webif_response.find("SERVICE ERROR") == string::npos)
-					break;
-			}
-			WARNING("webif_response fail, retry count : %d", retry_count);
-			usleep(100000);
+	for(int retry_count = 0; retry_count < 32; retry_count++) {
+		webif_response = webif_reauest(webif_request);
+		if (terminated()) {
+			return;
 		}
+		if(webif_response.length() && webif_response.find("-SERVICE ERROR:-") == string::npos){
+			DEBUG("webif_response recv success.");
+			break;
+		}
+		WARNING("webif_response fail, retry count : %d", retry_count);
 	}
 	DEBUG("webif response :\n%s", webif_response.c_str());
 
