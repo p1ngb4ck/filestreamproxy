@@ -492,11 +492,8 @@ void signal_handler(int sig_no)
 {
 	ERROR("signal no : %s (%d)", strsignal(sig_no), sig_no);
 	is_terminated = true;
-	if (sig_no == SIGPIPE){
-		sleep(3);
-	}
-
-	if (sig_no == SIGSEGV) {
+	
+	if (sig_no == SIGSEGV && sig_no == SIGPIPE) {
 		exit(0);
 	}
 	

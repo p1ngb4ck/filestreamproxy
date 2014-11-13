@@ -48,8 +48,9 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 
 		pollevt[0].revents = 0;
 		int poll_state = poll(pollevt, 1, 1000);
-		if (poll_state == 0)
+		if (poll_state == 0) { 
 			break;
+		}
 		else if (poll_state < 0) {
 			ERROR("webif receive poll error : %s (%d)", strerror(errno), errno);
 			throw(http_trap("webif response fail.", 502, "Bad Gateway, webif response error"));
@@ -222,7 +223,19 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 	}
 	webif_request += "\r\n";
 
-	std::string webif_response = webif_reauest(webif_request);
+	std::string webif_response = "";
+	
+	if (webif_response == "") {
+		for(int retry_count = 0; retry_count < 32; retry_count++) {
+			webif_response = webif_reauest(webif_request);
+			if(webif_response.length()){
+				if(webif_response.find("SERVICE ERROR") == string::npos)
+					break;
+			}
+			WARNING("webif_response fail, retry count : %d", retry_count);
+			usleep(100000);
+		}
+	}
 	DEBUG("webif response :\n%s", webif_response.c_str());
 
 	if (webif_response.find("WWW-Authenticate") != std::string::npos) {
