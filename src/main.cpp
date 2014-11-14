@@ -58,20 +58,34 @@ bool terminated()
 }
 //----------------------------------------------------------------------
 
+void release_resource()
+{
+	DEBUG("release resource start");
+	if (encoder) { 
+		delete encoder;
+		encoder = 0;
+		DEBUG("encoder release ok");
+	}
+	if (source) {
+		delete source;
+		source = 0;
+		DEBUG("source release ok");
+	}
+	DEBUG("release resource finish");
+}
+//----------------------------------------------------------------------
+
 void cbexit()
 {
-	INFO("release resource start");
-	if (encoder) { delete encoder; encoder = 0; }
-	if (source)  { delete source; source = 0; }
-
+	release_resource();
 	char checker_filename[255] = {0};
 	if (tsp_pid) {
 		::sprintf(checker_filename, TSP_CHECKER_TEMPLETE, tsp_pid);
 		if (::access(checker_filename, F_OK) == 0) {
 			::unlink(checker_filename);
+			DEBUG("checker_file unlink ok - [%s]", checker_filename);
 		}
 	}
-	INFO("release resource finish");
 }
 //----------------------------------------------------------------------
 
@@ -107,6 +121,24 @@ int send_signal(pid_t pid, int signal)
 void signal_handler_checker(int sig_no)
 {
 	is_terminated = true;
+}
+//----------------------------------------------------------------------
+
+int check_sleep(pid_t pid, int sleep_time)
+{
+	int sleep_count = 0;
+	int max_sleep_count = sleep_time * 10;
+	char process_path[255] = {0};
+
+	sprintf(process_path, "/proc/%d", pid);
+	
+	while (sleep_count++ < max_sleep_count) {
+		if (access(process_path, F_OK) != 0) {
+			return 0;
+		}
+		usleep(100*1000);
+	}
+	return 1;
 }
 //----------------------------------------------------------------------
 
@@ -150,10 +182,10 @@ int tsp_checker(pid_t pid)
 
 	DD_LOG("kill (%ld)", tsp_pid);
 
-	sleep(3);
-	send_signal(tsp_pid, SIGKILL);
-	sleep(2);
-
+	if (check_sleep(tsp_pid, 3)) {
+		send_signal(tsp_pid, SIGKILL);
+		check_sleep(tsp_pid, 2);
+	}
 	return 0;
 }
 //----------------------------------------------------------------------
@@ -206,11 +238,7 @@ int main(int argc, char **argv)
 		case HttpHeader::TRANSCODING_FILE:
 			try {
 				std::string uri = UriDecoder().decode(header.page_params["file"].c_str());
-				Mpeg *ts = new Mpeg(uri, false);
-				pmt_pid   = ts->pmt_pid;
-				video_pid = ts->video_pid;
-				audio_pid = ts->audio_pid;
-				source = ts;
+				source = new Mpeg(uri, false);
 			}
 			catch (const trap &e) {
 				throw(http_trap(e.what(), 404, "Not Found"));
@@ -227,11 +255,7 @@ int main(int argc, char **argv)
 				sprintf(update_status_command, "touch "TSP_CHECKER_TEMPLETE, tsp_pid);
 				system(update_status_command);
 
-				Demuxer *dmx = new Demuxer(&header);
-				pmt_pid   = dmx->pmt_pid;
-				video_pid = dmx->video_pid;
-				audio_pid = dmx->audio_pid;
-				source = dmx;
+				source = new Demuxer(&header);
 			}
 			catch (const http_trap &e) {
 				throw(e);
@@ -251,6 +275,10 @@ int main(int argc, char **argv)
 		default:
 			throw(http_trap(std::string("not support source type : ") + Util::ultostr(header.type), 400, "Bad Request"));
 		}
+
+		pmt_pid   = source->pmt_pid;
+		video_pid = source->video_pid;
+		audio_pid = source->audio_pid;
 
 		encoder = new Encoder();
 		
@@ -492,6 +520,8 @@ void signal_handler(int sig_no)
 {
 	ERROR("signal no : %s (%d)", strsignal(sig_no), sig_no);
 	is_terminated = true;
+
+	release_resource();
 
 	switch(sig_no) {
 	case SIGSEGV:

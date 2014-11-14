@@ -67,7 +67,6 @@ private:
 
 public:
 	off_t stream_length;
-	int pmt_pid, video_pid, audio_pid;
 
 	Mpeg(std::string filename, bool request_time_seek) throw (trap);
 	virtual ~Mpeg() throw () {}

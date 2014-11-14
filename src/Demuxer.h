@@ -20,11 +20,6 @@
 
 class Demuxer : public Source
 {
-public:
-	int	pmt_pid;
-	int	video_pid;
-	int	audio_pid;
-
 private:
 	int fd;
 	int sock;

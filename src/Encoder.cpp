@@ -122,7 +122,7 @@ bool Encoder::retry_open(int retry_count, int sleep_time)
 			return true;
 		}
 		WARNING("encoder%d open fail, retry count : %d/%d", encoder_id, i, retry_count);
-		usleep(100*1000); /*wait sleep_time ms*/
+		usleep(sleep_time*100*1000); /*wait sleep_time ms*/
 
 	}
 	ERROR("encoder open fail : %s (%d)", strerror(errno), errno);
