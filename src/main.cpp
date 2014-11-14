@@ -58,7 +58,7 @@ bool terminated()
 }
 //----------------------------------------------------------------------
 
-void release_resource()
+inline void release_resource()
 {
 	DEBUG("release resource start");
 	if (encoder) { 
@@ -105,12 +105,19 @@ inline int streaming_write(const char *buffer, size_t buffer_len, bool enable_lo
 	}
 //----------------------------------------------------------------------
 
-int send_signal(pid_t pid, int signal)
+inline int exist_process(pid_t pid)
 {
 	char process_path[255] = {0};
 	sprintf(process_path, "/proc/%d", pid);
+	if (access(process_path, F_OK) == 0)
+		return 1;
+	return 0;
+}
+//----------------------------------------------------------------------
 
-	if (access(process_path, F_OK) == 0) {
+inline int send_signal(pid_t pid, int signal)
+{
+	if (exist_process(pid)) {
 		kill(pid, signal);
 		DD_LOG("  >> run kill-pid : %ld -> %ld (%d)", getpid(), pid, signal);
 	}
@@ -128,12 +135,9 @@ int check_sleep(pid_t pid, int sleep_time)
 {
 	int sleep_count = 0;
 	int max_sleep_count = sleep_time * 10;
-	char process_path[255] = {0};
 
-	sprintf(process_path, "/proc/%d", pid);
-	
 	while (sleep_count++ < max_sleep_count) {
-		if (access(process_path, F_OK) != 0) {
+		if (!exist_process(pid)) {
 			return 0;
 		}
 		usleep(100*1000);
@@ -238,6 +242,7 @@ int main(int argc, char **argv)
 		case HttpHeader::TRANSCODING_FILE:
 			try {
 				std::string uri = UriDecoder().decode(header.page_params["file"].c_str());
+				encoder = new Encoder();
 				source = new Mpeg(uri, false);
 			}
 			catch (const trap &e) {
@@ -255,6 +260,7 @@ int main(int argc, char **argv)
 				sprintf(update_status_command, "touch "TSP_CHECKER_TEMPLETE, tsp_pid);
 				system(update_status_command);
 
+				encoder = new Encoder();
 				source = new Demuxer(&header);
 			}
 			catch (const http_trap &e) {
@@ -280,8 +286,6 @@ int main(int argc, char **argv)
 		video_pid = source->video_pid;
 		audio_pid = source->audio_pid;
 
-		encoder = new Encoder();
-		
 		if (!encoder->retry_open(2, 3)) {
 			throw(http_trap("encoder open fail.", 503, "Service Unavailable"));
 		}

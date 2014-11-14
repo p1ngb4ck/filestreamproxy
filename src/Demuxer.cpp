@@ -209,6 +209,8 @@ void Demuxer::open() throw(http_trap)
 
 Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 {
+	SingleLock lock(&demux_mutex);
+
 	demux_id = pat_pid = fd = sock = -1;
 	pmt_pid = audio_pid = video_pid = 0;
 
@@ -251,6 +253,8 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 
 Demuxer::~Demuxer() throw()
 {
+	SingleLock lock(&demux_mutex);
+
 	std::vector<unsigned long>::iterator iter = pids.begin();
 	for (; iter != pids.end(); ++iter) {
 		unsigned long pid = *iter;

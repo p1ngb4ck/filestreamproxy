@@ -12,6 +12,7 @@
 
 #include "3rdparty/trap.h"
 
+#include "Mutex.h"
 #include "SharedMemory.h"
 //----------------------------------------------------------------------
 
@@ -25,6 +26,7 @@ class Encoder : public SharedMemory<Session>
 {
 private:
 	int fd;
+	Mutex encoder_mutex;
 
 public:
 	enum {

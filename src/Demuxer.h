@@ -16,6 +16,7 @@
 #include "Util.h"
 #include "Http.h"
 #include "Source.h"
+#include "Mutex.h"
 //----------------------------------------------------------------------
 
 class Demuxer : public Source
@@ -28,6 +29,8 @@ private:
 	int pat_pid;
 	std::vector<unsigned long> pids;
 	std::vector<unsigned long> new_pids;
+
+	Mutex demux_mutex;
 
 protected:
 	std::string webif_reauest(std::string request) throw(http_trap);
