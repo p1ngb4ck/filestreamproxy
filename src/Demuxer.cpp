@@ -19,10 +19,11 @@
 #include "Logger.h"
 #include "Demuxer.h"
 
+bool terminated();
+
 using namespace std;
 //-------------------------------------------------------------------------------
 
-bool terminated();
 std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 {
 	if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0)
@@ -48,8 +49,9 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 
 		pollevt[0].revents = 0;
 		int poll_state = poll(pollevt, 1, 1000);
-		if (poll_state == 0)
+		if (poll_state == 0) { 
 			break;
+		}
 		else if (poll_state < 0) {
 			ERROR("webif receive poll error : %s (%d)", strerror(errno), errno);
 			throw(http_trap("webif response fail.", 502, "Bad Gateway, webif response error"));
@@ -207,6 +209,8 @@ void Demuxer::open() throw(http_trap)
 
 Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 {
+	SingleLock lock(&demux_mutex);
+
 	demux_id = pat_pid = fd = sock = -1;
 	pmt_pid = audio_pid = video_pid = 0;
 
@@ -222,7 +226,18 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 	}
 	webif_request += "\r\n";
 
-	std::string webif_response = webif_reauest(webif_request);
+	std::string webif_response = "";
+	for(int retry_count = 0; retry_count < 32; retry_count++) {
+		webif_response = webif_reauest(webif_request);
+		if (terminated()) {
+			return;
+		}
+		if(webif_response.length() && webif_response.find("-SERVICE ERROR:-") == string::npos){
+			DEBUG("webif_response recv success.");
+			break;
+		}
+		WARNING("webif_response fail, retry count : %d", retry_count);
+	}
 	DEBUG("webif response :\n%s", webif_response.c_str());
 
 	if (webif_response.find("WWW-Authenticate") != std::string::npos) {
@@ -238,6 +253,8 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 
 Demuxer::~Demuxer() throw()
 {
+	SingleLock lock(&demux_mutex);
+
 	std::vector<unsigned long>::iterator iter = pids.begin();
 	for (; iter != pids.end(); ++iter) {
 		unsigned long pid = *iter;

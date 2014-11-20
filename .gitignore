@@ -26,3 +26,13 @@ config.mk
 config.mk.bak
 example/bin
 example/obj
+transtreamproxy.IAB
+transtreamproxy.IAD
+transtreamproxy.IMB
+transtreamproxy.IMD
+transtreamproxy.PFI
+transtreamproxy.PO
+transtreamproxy.PR
+transtreamproxy.PS
+transtreamproxy.PRI
+transtreamproxy.WK3

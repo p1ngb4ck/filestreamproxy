@@ -18,6 +18,11 @@ public:
 	virtual ~Source(){}
 	virtual int get_fd() const throw() = 0;
 	virtual bool is_initialized() = 0;
+	
+public:
+	int pmt_pid;
+	int video_pid;
+	int audio_pid;
 };
 //----------------------------------------------------------------------
 

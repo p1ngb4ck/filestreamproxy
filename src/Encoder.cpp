@@ -18,11 +18,15 @@
 #include "Logger.h"
 #include "Encoder.h"
 
+bool terminated();
+
 using namespace std;
 //----------------------------------------------------------------------
 
 Encoder::Encoder() throw(trap)
 {
+	SingleLock lock(&encoder_mutex);
+
 	encoder_id = fd = -1;
 	max_encodr_count = state = ENCODER_STAT_INIT;
 
@@ -79,6 +83,8 @@ Encoder::Encoder() throw(trap)
 
 Encoder::~Encoder()
 {
+	SingleLock lock(&encoder_mutex);
+
 	Post();
 	encoder_close();
 }
@@ -99,6 +105,7 @@ void Encoder::encoder_close()
 
 bool Encoder::encoder_open()
 {
+	errno = 0;
 	std::string path = "/dev/bcm_enc" + Util::ultostr(encoder_id);
 	fd = ::open(path.c_str(), O_RDWR, 0);
 	if (fd >= 0) {
@@ -109,10 +116,9 @@ bool Encoder::encoder_open()
 }
 //----------------------------------------------------------------------
 
-bool terminated();
 bool Encoder::retry_open(int retry_count, int sleep_time)
 {
-	for (int i = 0; i < retry_count; ++i) {
+	for (int i = 0; i < retry_count*10; ++i) {
 		if (terminated()) {
 			break;
 		}
@@ -121,9 +127,7 @@ bool Encoder::retry_open(int retry_count, int sleep_time)
 			return true;
 		}
 		WARNING("encoder%d open fail, retry count : %d/%d", encoder_id, i, retry_count);
-		if (retry_count > 1) {
-			sleep(sleep_time);
-		}
+		usleep(sleep_time*100*1000); /*wait sleep_time ms*/
 	}
 	ERROR("encoder open fail : %s (%d)", strerror(errno), errno);
 	return false;
