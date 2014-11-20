@@ -524,13 +524,6 @@ void signal_handler(int sig_no)
 {
 	ERROR("signal no : %s (%d)", strsignal(sig_no), sig_no);
 	is_terminated = true;
-
-	release_resource();
-
-	switch(sig_no) {
-	case SIGSEGV:
-	case SIGPIPE: exit(0);
-	}
 }
 //----------------------------------------------------------------------
 
