@@ -8,6 +8,8 @@
 #ifndef ENCODER_H_
 #define ENCODER_H_
 
+#include "config.h"
+
 #include <string>
 
 #include "3rdparty/trap.h"
@@ -30,9 +32,16 @@ private:
 
 public:
 	enum {
-		IOCTL_SET_VPID   = 1,
-		IOCTL_SET_APID   = 2,
+#ifdef HAVE_EXT_PID
+		IOCTL_SET_VPID	 = 11,
+		IOCTL_SET_APID	 = 12,
+		IOCTL_SET_PMTPID = 13,
+#else
+		IOCTL_SET_VPID	 = 1,
+		IOCTL_SET_APID	 = 2,
 		IOCTL_SET_PMTPID = 3,
+#endif
+
 		IOCTL_START_TRANSCODING = 100,
 		IOCTL_STOP_TRANSCODING  = 200
 	};
