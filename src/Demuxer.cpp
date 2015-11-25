@@ -38,7 +38,7 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 
 	if (write(sock, request.c_str(), request.length()) != request.length())
 		throw(http_trap("webif request fail.", 502, "Bad Gateway, webif request error"));
-	DEBUG("webif request :\n", request.c_str());
+	DEBUG("webif request : %s\n", request.c_str());
 
 	std::string response = "";
 	struct pollfd pollevt[2];
@@ -49,6 +49,8 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 
 		pollevt[0].revents = 0;
 		int poll_state = poll(pollevt, 1, 1000);
+		DEBUG("poll state : %d", poll_state);
+
 		if (poll_state == 0) { 
 			break;
 		}
@@ -57,12 +59,15 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 			throw(http_trap("webif response fail.", 502, "Bad Gateway, webif response error"));
 		}
 		if (pollevt[0].revents & POLLIN) {
-			if (read(sock, buffer, 1024) <= 0) {
+			int rc = read(sock, buffer, 1024);
+			if (rc <= 0) {
+				WARNING("read error : %d", rc);
 				break;
 			}
 			response += buffer;
 		}
 		if (terminated()) {
+			DEBUG("already terminated!!");
 			response = "";
 			break;
 		}
@@ -229,6 +234,7 @@ Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 	std::string webif_response = "";
 	for(int retry_count = 0; retry_count < 32; retry_count++) {
 		webif_response = webif_reauest(webif_request);
+		DEBUG("webif_response data :\n[%s]", webif_response.c_str());
 		if (terminated()) {
 			return;
 		}
