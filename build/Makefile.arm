@@ -21,12 +21,12 @@ OBJ=./obj/
 
 ifeq ($(CROSS),YES)
 SYSROOT=$(OETOP)/build/$(MODEL)/tmp/sysroots/$(MODEL)
-TOOLCHAIN=$(OETOP)/build/$(MODEL)/tmp/sysroots/i686-linux/usr/bin/mipsel-oe-linux/mipsel-oe-linux-
+TOOLCHAIN=$(OETOP)/build/$(MODEL)/tmp/sysroots/i686-linux/usr/bin/arm-oe-linux-gnueabi/arm-linux-
 endif
 
 RM=rm -Rf
-CXX=$(TOOLCHAIN)g++ --sysroot=$(OETOP)/build/$(MODEL)/tmp/sysroots/$(MODEL)
-LD=$(TOOLCHAIN)ld --sysroot=$(OETOP)/build/$(MODEL)/tmp/sysroots/$(MODEL)
+CXX=$(TOOLCHAIN)g++ -march=armv7-a -mfloat-abi=hard -mfpu=neon
+LD=$(TOOLCHAIN)ld
 STRIP=$(TOOLCHAIN)strip
 UPLOAD=./script.upload
 
@@ -62,7 +62,7 @@ clean:
 	$(RM) $(PROJECT) obj *.o *.a *.d *.log
 
 .prepare:
-	echo "" > config.h
+	@echo "#define HAVE_EXT_PID 1" > $(TOP)/build/config.h
 	@if [ ! -e obj ]; then mkdir obj; fi
 
 .showinfo:
