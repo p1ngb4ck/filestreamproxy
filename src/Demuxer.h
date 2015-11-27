@@ -45,6 +45,8 @@ public:
 
 	int get_fd() const throw();
 	bool is_initialized() { return true; }
+
+	void disconnect_webif_socket();
 };
 //----------------------------------------------------------------------
 

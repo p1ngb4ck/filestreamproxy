@@ -73,6 +73,11 @@ bool HttpHeader::parse_request(std::string header)
 		else if (page == "/m3u") {
 			type = HttpHeader::M3U;
 		}
+		else if (page == "/live") {
+			if (page_params["cmd"] == "stop") {
+				type = HttpHeader::TRANSCODING_LIVE_STOP;
+			}
+		}
 	}
 	// live
 	else {

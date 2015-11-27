@@ -76,6 +76,15 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 }
 //-------------------------------------------------------------------------------
 
+void Demuxer::disconnect_webif_socket()
+{
+	if (sock != -1) {
+		::close(sock);
+	}
+	sock = -1;
+}
+//-------------------------------------------------------------------------------
+
 bool Demuxer::already_exist(std::vector<unsigned long> &pidlist, int pid)
 {
 	for(int i = 0; i < pidlist.size(); ++i) {
@@ -214,6 +223,8 @@ void Demuxer::open() throw(http_trap)
 
 Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 {
+	source_type = Source::SOURCE_TYPE_LIVE;
+
 	SingleLock lock(&demux_mutex);
 
 	demux_id = pat_pid = fd = sock = -1;

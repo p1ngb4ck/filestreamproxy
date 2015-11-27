@@ -38,6 +38,8 @@
 #endif /* USE_DEBUG */
 //----------------------------------------------------------------------
 
+char* get_timestamp();
+
 class Logger
 {
 private:

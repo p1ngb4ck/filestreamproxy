@@ -649,6 +649,8 @@ bool Mpeg::read_ts_meta(std::string media_file_name, int &vpid, int &apid)
 Mpeg::Mpeg(std::string filename, bool request_time_seek) throw (trap)
 //	: MpegTS(filename)
 {
+	source_type = Source::SOURCE_TYPE_FILE;
+
 	m_current_offset = m_base_offset = m_last_offset = 0;
 	m_splitsize = m_nrfiles = m_current_file = m_totallength = 0;
 
