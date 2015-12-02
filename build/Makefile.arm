@@ -21,12 +21,12 @@ OBJ=./obj/
 
 ifeq ($(CROSS),YES)
 SYSROOT=$(OETOP)/build/$(MODEL)/tmp/sysroots/$(MODEL)
-TOOLCHAIN=$(OETOP)/build/$(MODEL)/tmp/sysroots/i686-linux/usr/bin/arm-oe-linux-gnueabi/arm-linux-
+TOOLCHAIN=$(OETOP)/build/$(MODEL)/tmp/sysroots/i686-linux/usr/bin/arm-oe-linux-gnueabi/arm-oe-linux-gnueabi-
 endif
 
 RM=rm -Rf
-CXX=$(TOOLCHAIN)g++ -march=armv7-a -mfloat-abi=hard -mfpu=neon
-LD=$(TOOLCHAIN)ld
+CXX=$(TOOLCHAIN)g++ -march=armv7-a -mfloat-abi=hard -mfpu=neon --sysroot=$(SYSROOT)
+LD=$(TOOLCHAIN)ld --sysroot=$(SYSROOT)
 STRIP=$(TOOLCHAIN)strip
 UPLOAD=./script.upload
 
