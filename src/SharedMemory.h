@@ -19,6 +19,11 @@
 
 using namespace std;
 //-------------------------------------------------------------------------------
+typedef struct _session_t {
+	int pid;
+	char ip[16];
+} Session;
+//-------------------------------------------------------------------------------
 
 template <class T>
 class SharedMemory

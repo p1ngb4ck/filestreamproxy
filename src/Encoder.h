@@ -16,13 +16,6 @@
 
 #include "Mutex.h"
 #include "SharedMemory.h"
-//----------------------------------------------------------------------
-
-typedef struct _session_t {
-	int pid;
-	char ip[16];
-} Session;
-//----------------------------------------------------------------------
 
 class Encoder : public SharedMemory<Session>
 {

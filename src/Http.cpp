@@ -76,6 +76,7 @@ bool HttpHeader::parse_request(std::string header)
 		else if (page == "/live") {
 			if (page_params["cmd"] == "stop") {
 				type = HttpHeader::TRANSCODING_LIVE_STOP;
+				ip = page_params["ip"];
 			}
 		}
 	}

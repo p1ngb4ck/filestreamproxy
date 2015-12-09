@@ -27,7 +27,7 @@
 #include "Demuxer.h"
 #include "Encoder.h"
 #include "UriDecoder.h"
-
+#include "SHMHandler.h"
 using namespace std;
 //----------------------------------------------------------------------
 
@@ -292,10 +292,13 @@ int main(int argc, char **argv)
 			catch (...) {
 			}
 			exit(0);
-		case HttpHeader::TRANSCODING_LIVE_STOP:
-			DEBUG("---->> live stop starting at %s <<----", get_timestamp());
-			system("killall -16 transtreamproxy"); /* sending SIGUSR1 signal to all of transtreamproxy process before zapping another tp. */
-			throw(http_trap(std::string("transcoding live stop : ") + Util::ultostr(header.type), 200, "OK"));
+ 		case HttpHeader::TRANSCODING_LIVE_STOP: {
+				char command[32] = {0};
+				sprintf(command, "kill -16 %d", SHMHandler::GetPidByIp(header.ip));
+				system(command); /* sending SIGUSR1 signal to specific transtreamproxy process before zapping another tp. */ 
+				DEBUG("---->> live stop starting at %s :: %s <<----", get_timestamp(), command);
+				throw(http_trap(std::string("transcoding live stop : ") + Util::ultostr(header.type), 200, "OK"));
+			}
 		default:
 			throw(http_trap(std::string("not support source type : ") + Util::ultostr(header.type), 400, "Bad Request"));
 		}

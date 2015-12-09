@@ -28,6 +28,7 @@ public:
 	};
 
 	int type;
+	std::string ip;
 	std::string method;
 	std::string path;
 	std::string version;
