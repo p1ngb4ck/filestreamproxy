@@ -8,6 +8,10 @@
 #ifndef MPEG_H_
 #define MPEG_H_
 
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/types.h>
+
 #include <map>
 #include <string>
 

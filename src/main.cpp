@@ -27,7 +27,8 @@
 #include "Demuxer.h"
 #include "Encoder.h"
 #include "UriDecoder.h"
-#include "SHMHandler.h"
+#include "SessionMap.h"
+
 using namespace std;
 //----------------------------------------------------------------------
 
@@ -294,7 +295,7 @@ int main(int argc, char **argv)
 			exit(0);
  		case HttpHeader::TRANSCODING_LIVE_STOP: {
 				char command[32] = {0};
-				sprintf(command, "kill -16 %d", SHMHandler::GetPidByIp(Util::host_addr()));
+				sprintf(command, "kill -16 %d", SessionMap::get()->get_pid_by_ip(Util::host_addr()));
 				system(command); /* sending SIGUSR1 signal to specific transtreamproxy process before zapping another tp. */ 
 				DEBUG("---->> live stop starting at %s :: %s <<----", get_timestamp(), command);
 				throw(http_trap(std::string("transcoding live stop : ") + Util::ultostr(header.type), 200, "OK"));

@@ -10,6 +10,8 @@
 #include "Util.h"
 #include "Logger.h"
 
+#include <stdio.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 
 #include <vector>
@@ -662,7 +664,7 @@ Mpeg::Mpeg(std::string filename, bool request_time_seek) throw (trap)
 
 	pmt_pid = video_pid = audio_pid = -1;
 
-	fd = open(filename.c_str(), O_RDONLY | O_LARGEFILE, 0);
+	fd = ::open(filename.c_str(), O_RDONLY | O_LARGEFILE, 0);
 	if (fd < 0) {
 		throw(trap("cannot open file"));
 	}

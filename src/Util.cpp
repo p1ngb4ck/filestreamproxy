@@ -10,6 +10,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <signal.h>
+#include <dirent.h>
 #include <sys/wait.h>
 
 #include <arpa/inet.h>
@@ -100,7 +101,7 @@ std::string Util::host_addr()
 
     return ss.str();
 }
-//-------------------------------------------------------------------------------
+//----------------------------------------------------------------------
 
 std::vector<int> Util::find_process_by_name(std::string name, int mypid)
 {
@@ -134,7 +135,8 @@ std::vector<int> Util::find_process_by_name(std::string name, int mypid)
 	}
 	return pidlist;
 }
-//-------------------------------------------------------------------------------
+//----------------------------------------------------------------------
+
 
 void Util::kill_process(int pid)
 {
@@ -144,3 +146,21 @@ void Util::kill_process(int pid)
 	DEBUG("SEND SIGINT to %d, result : %d", pid, result);
 }
 //----------------------------------------------------------------------
+
+int Util::get_encoder_count()
+{
+	int max_encodr_count = 0;
+	DIR* d = opendir("/dev");
+	if (d != 0) {
+		struct dirent* de;
+		while ((de = readdir(d)) != 0) {
+			if (strncmp("bcm_enc", de->d_name, 7) == 0) {
+				max_encodr_count++;
+			}
+		}
+		closedir(d);
+	}
+	return max_encodr_count;
+}
+//----------------------------------------------------------------------
+

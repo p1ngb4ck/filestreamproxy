@@ -15,9 +15,8 @@
 #include "3rdparty/trap.h"
 
 #include "Mutex.h"
-#include "SharedMemory.h"
 
-class Encoder : public SharedMemory<Session>
+class Encoder
 {
 private:
 	int fd;
@@ -48,18 +47,6 @@ public:
 
 	int state;
 	int encoder_id;
-	int max_encodr_count;
-
-protected:
-	void session_dump(const char* aMessage);
-
-	void session_erase(int aPid);
-	int  session_register(std::string aIpAddr, int aPid);
-	void session_unregister(std::string aIpAddr);
-
-	int  session_update(std::string aIpAddr, int aPid);
-	bool session_terminated(std::vector<int>& aList, int aPid);
-	int  session_already_exist(std::string aIpAddr);
 
 protected:
 	bool encoder_open();
