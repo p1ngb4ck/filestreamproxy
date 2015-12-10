@@ -216,7 +216,7 @@ int main(int argc, char **argv)
 		exit(0);
 	}
 	tsp_pid = ::getpid();
-
+	
 	signal(SIGUSR1, signal_handler_checker);
 
 	Logger::instance()->init("/tmp/transtreamproxy", Logger::ERROR);
@@ -294,7 +294,7 @@ int main(int argc, char **argv)
 			exit(0);
  		case HttpHeader::TRANSCODING_LIVE_STOP: {
 				char command[32] = {0};
-				sprintf(command, "kill -16 %d", SHMHandler::GetPidByIp(header.ip));
+				sprintf(command, "kill -16 %d", SHMHandler::GetPidByIp(Util::host_addr()));
 				system(command); /* sending SIGUSR1 signal to specific transtreamproxy process before zapping another tp. */ 
 				DEBUG("---->> live stop starting at %s :: %s <<----", get_timestamp(), command);
 				throw(http_trap(std::string("transcoding live stop : ") + Util::ultostr(header.type), 200, "OK"));

@@ -27,14 +27,13 @@ public:
 	static int GetPidByIp(std::string ip)
 	{
 		int pid = 0;
-		SHMHandler* hwd = new SHMHandler();
-		if (hwd != 0) {
-			try {
-				pid = hwd->get_Pid(ip);
-			}
-			catch (const http_trap &e) { pid = 0; }
-			delete hwd;
+		SHMHandler hwd;
+
+		try {
+			pid = hwd.get_Pid(ip);
 		}
+		catch (const http_trap &e) { pid = 0; }
+
 		return pid;
 	}
 
