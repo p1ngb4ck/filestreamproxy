@@ -10,6 +10,8 @@
 #include "Util.h"
 #include "Logger.h"
 
+#include <stdio.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 
 #include <vector>
@@ -649,6 +651,8 @@ bool Mpeg::read_ts_meta(std::string media_file_name, int &vpid, int &apid)
 Mpeg::Mpeg(std::string filename, bool request_time_seek) throw (trap)
 //	: MpegTS(filename)
 {
+	source_type = Source::SOURCE_TYPE_FILE;
+
 	m_current_offset = m_base_offset = m_last_offset = 0;
 	m_splitsize = m_nrfiles = m_current_file = m_totallength = 0;
 
@@ -660,7 +664,7 @@ Mpeg::Mpeg(std::string filename, bool request_time_seek) throw (trap)
 
 	pmt_pid = video_pid = audio_pid = -1;
 
-	fd = open(filename.c_str(), O_RDONLY | O_LARGEFILE, 0);
+	fd = ::open(filename.c_str(), O_RDONLY | O_LARGEFILE, 0);
 	if (fd < 0) {
 		throw(trap("cannot open file"));
 	}

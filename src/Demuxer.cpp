@@ -29,6 +29,9 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 	if ((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0)
 		throw(trap("webif create socket fail."));
 
+	int nostream_count = 0;
+	std::string response = "";
+
 	struct sockaddr_in sock_addr;
 	sock_addr.sin_family = AF_INET;
 	sock_addr.sin_port = htons(80);
@@ -36,38 +39,65 @@ std::string Demuxer::webif_reauest(std::string request) throw(http_trap)
 	if (connect(sock, (struct sockaddr*)&sock_addr, sizeof(struct sockaddr_in)))
 		throw(http_trap("webif connect fail.", 502, "Bad Gateway, webif connect fail"));
 
-	if (write(sock, request.c_str(), request.length()) != request.length())
-		throw(http_trap("webif request fail.", 502, "Bad Gateway, webif request error"));
-	DEBUG("webif request :\n", request.c_str());
+	for (nostream_count = 0; nostream_count < 3; nostream_count++) {
+		if (write(sock, request.c_str(), request.length()) != request.length())
+			throw(http_trap("webif request fail.", 502, "Bad Gateway, webif request error"));
+		DEBUG("webif request : %s\n", request.c_str());
 
-	std::string response = "";
-	struct pollfd pollevt[2];
-	pollevt[0].fd      = sock;
-	pollevt[0].events  = POLLIN;
-	for (;;) {
-		char buffer[1024] = {0};
+		struct pollfd pollevt[2];
+		pollevt[0].fd      = sock;
+		pollevt[0].events  = POLLIN;
+		for (;;) {
+			char buffer[1024] = {0};
 
-		pollevt[0].revents = 0;
-		int poll_state = poll(pollevt, 1, 1000);
-		if (poll_state == 0) { 
-			break;
-		}
-		else if (poll_state < 0) {
-			ERROR("webif receive poll error : %s (%d)", strerror(errno), errno);
-			throw(http_trap("webif response fail.", 502, "Bad Gateway, webif response error"));
-		}
-		if (pollevt[0].revents & POLLIN) {
-			if (read(sock, buffer, 1024) <= 0) {
+			pollevt[0].revents = 0;
+			int poll_state = poll(pollevt, 1, 1000);
+			DEBUG("poll state : %d", poll_state);
+
+			if (poll_state == 0) {
 				break;
 			}
-			response += buffer;
+			else if (poll_state < 0) {
+				ERROR("webif receive poll error : %s (%d)", strerror(errno), errno);
+				throw(http_trap("webif response fail.", 502, "Bad Gateway, webif response error"));
+			}
+			if (pollevt[0].revents & POLLIN) {
+				int rc = read(sock, buffer, 1024);
+				if (rc <= 0) {
+					WARNING("read error : %d", rc);
+					break;
+				}
+				response += buffer;
+			}
+			if (terminated()) {
+				DEBUG("already terminated!!");
+				response = "";
+				break;
+			}
 		}
+		ERROR("++nostream count : %d", nostream_count);
 		if (terminated()) {
+			DEBUG("already terminated!!");
 			response = "";
 			break;
 		}
+		if (response.find("= NO STREAM") != std::string::npos && response.find(":pat,") == std::string::npos) {
+			response = "";
+			usleep(1000*500);
+			continue;
+		}
 	}
+
 	return response;
+}
+//-------------------------------------------------------------------------------
+
+void Demuxer::disconnect_webif_socket()
+{
+	if (sock != -1) {
+		::close(sock);
+	}
+	sock = -1;
 }
 //-------------------------------------------------------------------------------
 
@@ -209,6 +239,8 @@ void Demuxer::open() throw(http_trap)
 
 Demuxer::Demuxer(HttpHeader *header) throw(http_trap)
 {
+	source_type = Source::SOURCE_TYPE_LIVE;
+
 	SingleLock lock(&demux_mutex);
 
 	demux_id = pat_pid = fd = sock = -1;

@@ -27,6 +27,7 @@
 #include "Demuxer.h"
 #include "Encoder.h"
 #include "UriDecoder.h"
+#include "SessionMap.h"
 
 using namespace std;
 //----------------------------------------------------------------------
@@ -50,6 +51,19 @@ static pthread_t source_thread_handle, stream_thread_handle;
 
 pid_t tsp_pid = 0, checker_pid = 0;
 unsigned long last_updated_time = 0;
+//----------------------------------------------------------------------
+
+void release_webif_record()
+{
+	if (source) {
+		Source::source_type_t type = source->get_source_type();
+		if (type == Source::SOURCE_TYPE_LIVE) {
+			Demuxer *demux = (Demuxer*)source;
+			demux->disconnect_webif_socket();
+			DEBUG("---->> disconnected at %s <<----", get_timestamp());
+		}
+	}
+}
 //----------------------------------------------------------------------
 
 bool terminated()
@@ -127,6 +141,7 @@ inline int send_signal(pid_t pid, int signal)
 
 void signal_handler_checker(int sig_no)
 {
+	release_webif_record();
 	is_terminated = true;
 }
 //----------------------------------------------------------------------
@@ -202,7 +217,7 @@ int main(int argc, char **argv)
 		exit(0);
 	}
 	tsp_pid = ::getpid();
-
+	
 	signal(SIGUSR1, signal_handler_checker);
 
 	Logger::instance()->init("/tmp/transtreamproxy", Logger::ERROR);
@@ -278,6 +293,13 @@ int main(int argc, char **argv)
 			catch (...) {
 			}
 			exit(0);
+ 		case HttpHeader::TRANSCODING_LIVE_STOP: {
+				char command[32] = {0};
+				sprintf(command, "kill -16 %d", SessionMap::get()->get_pid_by_ip(Util::host_addr()));
+				system(command); /* sending SIGUSR1 signal to specific transtreamproxy process before zapping another tp. */ 
+				DEBUG("---->> live stop starting at %s :: %s <<----", get_timestamp(), command);
+				throw(http_trap(std::string("transcoding live stop : ") + Util::ultostr(header.type), 200, "OK"));
+			}
 		default:
 			throw(http_trap(std::string("not support source type : ") + Util::ultostr(header.type), 400, "Bad Request"));
 		}
@@ -355,6 +377,7 @@ int main(int argc, char **argv)
 
 		send_signal(checker_pid, SIGUSR1);
 		pthread_join(stream_thread_handle, 0);
+
 		is_terminated = true;
 
 		if (source != 0) {
@@ -383,6 +406,8 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 	send_signal(checker_pid, SIGUSR1);
+
+	DEBUG("---->> done at %s <<----", get_timestamp());
 	return 0;
 }
 //----------------------------------------------------------------------
@@ -402,7 +427,7 @@ void *streaming_thread_main(void *params)
 			poll_fd[0].fd = encoder->get_fd();
 			poll_fd[0].events = POLLIN | POLLHUP;
 
-			int poll_state = ::poll(poll_fd, 1, 1000);
+			int poll_state = ::poll(poll_fd, 1, 500);
 			if (poll_state == -1) {
 				throw(trap("poll error."));
 			}
@@ -470,7 +495,7 @@ void *source_thread_main(void* params)
 		poll_fd_src[0].events = POLLIN;
 
 		while(!is_terminated) {
-			poll_state = poll(poll_fd_src, 1, 1000);
+			poll_state = poll(poll_fd_src, 1, 500);
 			if (poll_state == -1) {
 				throw(trap("poll error."));
 			}
@@ -481,7 +506,7 @@ void *source_thread_main(void* params)
 				}
 				else if (rc > 0) {
 					poll_fd_enc[0].revents = 0;
-					poll_state = poll(poll_fd_enc, 1, 1000);
+					poll_state = poll(poll_fd_enc, 1, 500);
 					if (poll_fd_enc[0].revents & POLLOUT) {
 						wc = write(encoder->get_fd(), buffer, rc);
 						if (wc < rc) {
@@ -491,7 +516,7 @@ void *source_thread_main(void* params)
 									throw(trap("terminated"));
 								}
 								poll_fd_enc[0].revents = 0;
-								poll_state = poll(poll_fd_enc, 1, 1000);
+								poll_state = poll(poll_fd_enc, 1, 500);
 								if (poll_state == -1) {
 									throw(trap("poll error."));
 								}

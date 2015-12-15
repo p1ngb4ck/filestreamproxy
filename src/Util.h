@@ -36,6 +36,8 @@ public:
 	static std::string host_addr();
 
 	static std::vector<int> find_process_by_name(std::string name, int mypid);
+
+	static int get_encoder_count();
 };
 //----------------------------------------------------------------------
 

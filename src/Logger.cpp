@@ -37,6 +37,22 @@ static const char* LOG_LV_STR[] = {
 #endif
 //----------------------------------------------------------------------
 
+char* get_timestamp()
+{
+	time_t rawtime;
+	struct tm *timeinfo;
+	static char buffer[80];
+
+	memset(buffer, 0, 80);
+
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	strftime(buffer, 80, "%Y%m%d-%H%M%S", timeinfo);
+
+	return buffer;
+}
+//----------------------------------------------------------------------
+
 Logger::Logger()
 	: mLogLevel(0), mLogHandle(0)
 {

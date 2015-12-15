@@ -6,7 +6,7 @@
  */
 
 #include <string.h>
-
+#include <unistd.h>
 #include <sstream>
 
 #include "Util.h"
@@ -72,6 +72,11 @@ bool HttpHeader::parse_request(std::string header)
 		}
 		else if (page == "/m3u") {
 			type = HttpHeader::M3U;
+		}
+		else if (page == "/live") {
+			if (page_params["cmd"] == "stop") {
+				type = HttpHeader::TRANSCODING_LIVE_STOP;
+			}
 		}
 	}
 	// live
@@ -177,7 +182,7 @@ std::string HttpHeader::read_request()
 	std::string request = "";
 	while (true) {
 		char buffer[128] = {0};
-		if (!read (0, buffer, 127)) {
+		if (!::read (0, buffer, 127)) {
 			break;
 		}
 		request += buffer;
@@ -188,7 +193,7 @@ std::string HttpHeader::read_request()
 			request = "";
 			break;
 		}
-		usleep(0);
+		::usleep(0);
 	}
 	return request;
 }

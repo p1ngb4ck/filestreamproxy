@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <dirent.h>
 #include <string.h>
 #include <unistd.h>
 #include <string.h>
@@ -17,6 +16,8 @@
 #include "Util.h"
 #include "Logger.h"
 #include "Encoder.h"
+
+#include "SessionMap.h"
 
 bool terminated();
 
@@ -28,56 +29,30 @@ Encoder::Encoder() throw(trap)
 	SingleLock lock(&encoder_mutex);
 
 	encoder_id = fd = -1;
-	max_encodr_count = state = ENCODER_STAT_INIT;
+	state = ENCODER_STAT_INIT;
 
-	DIR* d = opendir("/dev");
-	if (d != 0) {
-		struct dirent* de;
-		while ((de = readdir(d)) != 0) {
-			if (strncmp("bcm_enc", de->d_name, 7) == 0) {
-				max_encodr_count++;
-			}
+	try {
+		SessionMap* session_map = SessionMap::get();
+		if (session_map == 0) {
+			throw(trap("create session map fail."));
 		}
-		closedir(d);
-	}
 
-	mSemId = 0;
-	mShmFd = 0;
-	mShmData = 0;
+		session_map->dump("before init.");
+		session_map->cleanup();
 
-	mSemName = "/tsp_session_sem";
-	mShmName = "/tsp_session_shm";
-	mShmSize = sizeof(Session) * max_encodr_count;
-
-	if (Open() == false)
-		throw(trap("session ctrl init fail."));
-	DEBUG("shm-info : fd [%d], name [%s], size [%d], data [%p]", mShmFd, mShmName.c_str(), mShmSize, mShmData);
-	DEBUG("sem-info : id [%p], name [%s]", mSemId, mSemName.c_str());
-
-	std::vector<int> pidlist = Util::find_process_by_name("transtreamproxy", 0);
-
-	session_dump("before init.");
-
-	Wait();
-	for (int i = 0; i < max_encodr_count; i++) {
-		if (mShmData[i].pid != 0) {
-			int pid = mShmData[i].pid;
-			if(session_terminated(pidlist, pid)) {
-				session_erase(pid);
-			}
+		int mypid = getpid();
+		std::string ipaddr = Util::host_addr();
+		if (session_map->already_exist(ipaddr) > 0) {
+			encoder_id = session_map->update(ipaddr, mypid);
 		}
+		else {
+			encoder_id = session_map->add(ipaddr, mypid);
+		}
+		DEBUG("encoder_device_id : %d", encoder_id);
 	}
-	Post();
-
-	int mypid = getpid();
-	std::string ipaddr = Util::host_addr();
-	if (session_already_exist(ipaddr) > 0) {
-		encoder_id = session_update(ipaddr, mypid);
+	catch (const trap &e) {
+		throw(e);
 	}
-	else {
-		encoder_id = session_register(ipaddr, mypid);
-	}
-	DEBUG("encoder_device_id : %d", encoder_id);
 }
 //----------------------------------------------------------------------
 
@@ -85,7 +60,14 @@ Encoder::~Encoder()
 {
 	SingleLock lock(&encoder_mutex);
 
-	Post();
+	try {
+		SessionMap* session_map = SessionMap::get();
+		if (session_map) {
+			session_map->post();
+		}
+	}
+	catch (const trap &e) {
+	}
 	encoder_close();
 }
 //----------------------------------------------------------------------
@@ -156,111 +138,3 @@ int Encoder::get_fd()
 }
 //----------------------------------------------------------------------
 
-void Encoder::session_dump(const char* aMessage)
-{
-	if (Logger::instance()->get_level() >= Logger::INFO) {
-		DUMMY(" >> %s", aMessage);
-		DUMMY("-------- [ DUMP HOST INFO ] ---------");
-		for (int i = 0; i < max_encodr_count; i++) {
-			DUMMY("%d : ip [%s], pid [%d]", i,  mShmData[i].ip, mShmData[i].pid);
-		}
-		DUMMY("-------------------------------------");
-	}
-}
-//----------------------------------------------------------------------
-
-bool Encoder::session_terminated(std::vector<int>& aList, int aPid)
-{
-	for (int i = 0; i < aList.size(); ++i) {
-		if (aList[i] == aPid) {
-			return false;
-		}
-	}
-	return true;
-}
-//----------------------------------------------------------------------
-
-int Encoder::session_register(std::string aIpAddr, int aPid)
-{
-	int i = 0;
-	bool result = false;
-
-	Wait();
-	for (; i < max_encodr_count; i++) {
-		if (mShmData[i].pid == 0) {
-			result = true;
-			mShmData[i].pid = aPid;
-			strcpy(mShmData[i].ip, aIpAddr.c_str());
-			break;
-		}
-	}
-	Post();
-	session_dump("after register.");
-
-	return result ? i : -1;
-}
-//----------------------------------------------------------------------
-
-void Encoder::session_unregister(std::string aIpAddr)
-{
-	Wait();
-	for (int i = 0; i < max_encodr_count; i++) {
-		if (strcmp(mShmData[i].ip, aIpAddr.c_str()) == 0) {
-			memset(mShmData[i].ip, 0, 16);
-			mShmData[i].pid = 0;
-			break;
-		}
-	}
-	Post();
-	session_dump("after unregister.");
-}
-//----------------------------------------------------------------------
-
-void Encoder::session_erase(int aPid)
-{
-	for (int i = 0; i < max_encodr_count; i++) {
-		if (mShmData[i].pid == aPid) {
-			DEBUG("erase.. %s : %d", mShmData[i].ip, mShmData[i].pid);
-			memset(mShmData[i].ip, 0, 16);
-			mShmData[i].pid = 0;
-			break;
-		}
-	}
-}
-//----------------------------------------------------------------------
-
-int Encoder::session_update(std::string aIpAddr, int aPid)
-{
-	int i = 0;
-	bool result = false;
-
-	session_dump("before update.");
-	Wait();
-	for (; i < max_encodr_count; i++) {
-		if (strcmp(mShmData[i].ip, aIpAddr.c_str()) == 0) {
-			result = true;
-			Util::kill_process(mShmData[i].pid);
-			memset(mShmData[i].ip, 0, 16);
-			mShmData[i].pid = 0;
-			break;
-		}
-	}
-	Post();
-	session_register(aIpAddr, aPid);
-	return result ? i : -1;
-}
-//----------------------------------------------------------------------
-
-int Encoder::session_already_exist(std::string aIpAddr)
-{
-	int existCount = 0;
-	Wait();
-	for (int i = 0; i < max_encodr_count; i++) {
-		if (strcmp(mShmData[i].ip, aIpAddr.c_str()) == 0) {
-			existCount++;
-		}
-	}
-	Post();
-	return existCount;
-}
-//----------------------------------------------------------------------

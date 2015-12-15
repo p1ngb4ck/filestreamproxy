@@ -32,6 +32,18 @@ AC_SUBST(PLATFORM)
 AC_SUBST(INCPATH)
 
 # Checks for typedefs, structures, and compiler characteristics.
+AC_SUBST(USE_EXT_PID)
+
+AC_ARG_ENABLE([ext-pid],
+  [AS_HELP_STRING([--enable-ext-pid],
+  [enable extend pid (default is no)])],
+  [use_ext_pid=$enableval],
+  [use_ext_pid=no])
+
+if test "$use_ext_pid" = "yes"; then
+	AC_DEFINE([HAVE_EXT_PID], [1], [Define to 1 if support extend pid.])
+	USE_EXT_PID=1
+fi
 
 # Checks for library functions.
 
