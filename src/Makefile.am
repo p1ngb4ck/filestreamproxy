@@ -10,6 +10,7 @@ transtreamproxy_SOURCES = \
 	Mpeg.cpp \
 	UriDecoder.cpp \
 	Util.cpp \
+    SessionMap.cpp \
 	3rdparty/trap.cpp
 
 transtreamproxy_CXXFLAGS = $(LIBSDL_CFLAGS) -Wno-unused-result -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
