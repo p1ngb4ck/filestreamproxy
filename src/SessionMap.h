@@ -51,14 +51,14 @@ public:
 
 	static SessionMap* get() throw(trap)
 	{
-		if (instance == 0) {
-			try {
-				instance = new SessionMap();
-			}
-			catch (const trap &e) {
-				throw(e);
-			}
+		//if (instance == 0) {
+		try {
+			instance = new SessionMap();
 		}
+		catch (const trap &e) {
+			throw(e);
+		}
+		//}
 		return instance;
 	}
 
